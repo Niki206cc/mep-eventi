@@ -338,3 +338,12 @@ def test_wp_rest_source():
                          "category_taxonomies": ["tipologie"], "zona": "Valle Camonica"}, http, TODAY).fetch()
     assert raws[0].hints["comune"] == "Montecampione" and raws[0].hints["categorie_fonte"] == ["Natura"]
     assert raws[0].image_urls == ["https://x/i.jpg"] and raws[0].needs_page_fetch
+
+
+def test_wp_rest_acf_poster():
+    from app.sources.wp_rest import WpRestSource
+    post = {"id": 9, "link": "https://altobrembo.it/evento/x/", "title": {"rendered": "Torneo"}, "content": {"rendered": "<p>Gara</p>"},
+            "acf": {"locandina": {"url": "https://altobrembo.it/loc.jpeg", "mime_type": "image/jpeg"}, "data_evento": "20261205", "vuoto": ""},
+            "_embedded": {"wp:featuredmedia": [{"source_url": "https://altobrembo.it/feat.jpg"}]}}
+    raws = WpRestSource({"id": "ab", "base_url": "https://altobrembo.it"}, FakeHttp({"/wp-json/wp/v2/eventi": [post]}), TODAY).fetch()
+    assert raws[0].image_urls[0] == "https://altobrembo.it/loc.jpeg" and "data_evento: 20261205" in raws[0].text

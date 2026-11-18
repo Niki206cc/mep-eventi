@@ -45,6 +45,15 @@ class WpRestSource(Source):
             for t in grp or []:
                 if isinstance(t, dict) and t.get("taxonomy"):
                     terms.setdefault(t["taxonomy"], []).append(t.get("name", ""))
+        # campi ACF: locandine (oggetti immagine) e dati utili (date, luogo...) come testo per l'IA
+        acf_lines = []
+        acf = p.get("acf") if isinstance(p.get("acf"), dict) else {}
+        for k, v in acf.items():
+            if isinstance(v, dict) and v.get("url") and str(v.get("mime_type", "image")).startswith("image"):
+                if v["url"] not in images:
+                    images.insert(0, v["url"])  # la locandina esplicita ha la precedenza
+            elif isinstance(v, (str, int, float)) and str(v).strip() and len(str(v)) < 300:
+                acf_lines.append(f"{k}: {v}")
         hints = self.base_hints()
         loc_tax = self.cfg.get("place_taxonomy")
         if loc_tax and terms.get(loc_tax):
@@ -58,7 +67,8 @@ class WpRestSource(Source):
             uid=str(p["id"]),
             url=p.get("link"),
             title=html_to_text((p.get("title") or {}).get("rendered", "")),
-            text=html_to_text((p.get("content") or {}).get("rendered", "")),
+            text=html_to_text((p.get("content") or {}).get("rendered", ""))
+            + ("\n\nDati della scheda:\n" + "\n".join(acf_lines) if acf_lines else ""),
             image_urls=images,
             hints=hints,
             needs_page_fetch=True,

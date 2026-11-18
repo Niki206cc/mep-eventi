@@ -180,3 +180,71 @@ sources:
     exclude_pattern: '/eventi/page/|/eventi/?$'
     max_links: 80
     zona: "Lago d'Iseo"
+
+  # ---------------- Altri comuni Municipium (Sebino, Val Brembana, Valtellina)
+  - id: sarnico
+    type: municipium
+    enabled: true
+    name: "Comune di Sarnico"
+    api: https://sarnico-api.municipiumapp.it
+    comune: Sarnico
+    zona: "Lago d'Iseo"
+    provincia: BG
+
+  - id: sanpellegrino
+    type: municipium
+    enabled: true
+    name: "Comune di San Pellegrino Terme"
+    api: https://san-pellegrino-terme-api.municipiumapp.it
+    comune: "San Pellegrino Terme"
+    zona: "Val Brembana"
+    provincia: BG
+
+  - id: tirano
+    type: municipium
+    enabled: true
+    name: "Comune di Tirano"
+    api: https://tirano-api.municipiumapp.it
+    comune: Tirano
+    zona: Valtellina
+    provincia: SO
+
+  # ---------------- Val Brembana
+  - id: visitbrembo
+    type: wp_rest
+    enabled: true
+    name: "VisitBrembo"
+    base_url: https://www.visitbrembo.it
+    rest_base: evento
+    modified_days: 90
+    max_pages: 2
+    category_taxonomies: [evento_tipologia]
+    zona: "Val Brembana"
+    provincia: BG
+
+  - id: altobrembo
+    type: wp_rest
+    enabled: true
+    name: "Altobrembo"
+    base_url: https://www.altobrembo.it
+    rest_base: evento
+    modified_days: 90
+    max_pages: 1
+    place_taxonomy: luogo
+    category_taxonomies: [categoria_evento]
+    zona: "Alta Val Brembana"
+    provincia: BG
+
+  # ---------------- Alta Valle Camonica
+  - id: prolocopontedilegno
+    type: wp_rest
+    enabled: true
+    name: "Pro Loco Ponte di Legno"
+    base_url: https://www.prolocopontedilegno.it
+    rest_base: event
+    modified_days: 120
+    max_pages: 1
+    category_taxonomies: [eventcat]
+    comune: "Ponte di Legno"
+    zona: "Valle Camonica"
+    provincia: BS
