@@ -38,6 +38,7 @@ sources:
     enabled: true
     name: "Comune di Darfo Boario Terme"
     api: https://darfo-boario-terme-api.municipiumapp.it
+    site_url: https://www.comune.darfoboarioterme.bs.it
     comune: "Darfo Boario Terme"
     zona: "Valle Camonica"
     provincia: BS
@@ -47,6 +48,7 @@ sources:
     enabled: true
     name: "Comune di Costa Volpino"
     api: https://costavolpino-api.municipiumapp.it
+    site_url: https://www.comune.costavolpino.bg.it
     comune: "Costa Volpino"
     zona: "Alto Sebino"
     provincia: BG
@@ -97,6 +99,7 @@ sources:
     enabled: true
     name: "Comune di Nembro"
     api: https://nembro-api.municipiumapp.it
+    site_url: https://www.comune.nembro.bg.it
     comune: "Nembro"
     zona: "Val Seriana"
     provincia: BG
@@ -106,6 +109,7 @@ sources:
     enabled: true
     name: "Comune di Albino"
     api: https://albino-api.municipiumapp.it
+    site_url: https://www.comune.albino.bg.it
     comune: "Albino"
     zona: "Val Seriana"
     provincia: BG
@@ -115,6 +119,7 @@ sources:
     enabled: true
     name: "Comune di Gandino"
     api: https://gandino-api.municipiumapp.it
+    site_url: https://www.comune.gandino.bg.it
     comune: "Gandino"
     zona: "Val Gandino"
     provincia: BG
@@ -124,6 +129,7 @@ sources:
     enabled: true
     name: "Comune di Leffe"
     api: https://leffe-api.municipiumapp.it
+    site_url: https://www.comune.leffe.bg.it
     comune: "Leffe"
     zona: "Val Gandino"
     provincia: BG
@@ -133,6 +139,7 @@ sources:
     enabled: true
     name: "Comune di Ranica"
     api: https://ranica-api.municipiumapp.it
+    site_url: https://www.comune.ranica.bg.it
     comune: "Ranica"
     zona: "Val Seriana"
     provincia: BG
@@ -142,6 +149,7 @@ sources:
     enabled: true
     name: "Comune di Valbondione"
     api: https://valbondione-api.municipiumapp.it
+    site_url: https://www.comune.valbondione.bg.it
     comune: "Valbondione"
     zona: "Val Seriana"
     provincia: BG
@@ -151,6 +159,7 @@ sources:
     enabled: true
     name: "Comune di Cene"
     api: https://cene-api.municipiumapp.it
+    site_url: https://www.comune.cene.bg.it
     comune: "Cene"
     zona: "Val Seriana"
     provincia: BG
@@ -187,6 +196,7 @@ sources:
     enabled: true
     name: "Comune di Sarnico"
     api: https://sarnico-api.municipiumapp.it
+    site_url: https://www.comune.sarnico.bg.it
     comune: Sarnico
     zona: "Lago d'Iseo"
     provincia: BG
@@ -196,6 +206,7 @@ sources:
     enabled: true
     name: "Comune di San Pellegrino Terme"
     api: https://san-pellegrino-terme-api.municipiumapp.it
+    site_url: https://www.comune.sanpellegrinoterme.bg.it
     comune: "San Pellegrino Terme"
     zona: "Val Brembana"
     provincia: BG
@@ -205,6 +216,7 @@ sources:
     enabled: true
     name: "Comune di Tirano"
     api: https://tirano-api.municipiumapp.it
+    site_url: https://www.comune.tirano.so.it
     comune: Tirano
     zona: Valtellina
     provincia: SO
