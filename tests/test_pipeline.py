@@ -229,7 +229,7 @@ def test_full_pipeline_creates_then_skips_and_dedups(st, tmp_path, monkeypatch):
     pl.run()
     assert len(pl.wp.events) == 1
     ev = pl.wp.events[0]
-    assert ev["start_date"] == "2026-12-12 20:45:00" and ev["image"] == 500 and ev["status"] == "draft"
+    assert ev["start_date"] == "2026-12-12 20:45:00" and ev["image"] == "500" and ev["status"] == "draft"
     assert "<script>" not in ev["description"] and "Fonte:" in ev["description"]
     assert ev["tags"] == [30] and ev["categories"] == [20] and ev["venue"] == 10
 

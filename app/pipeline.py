@@ -357,7 +357,7 @@ class Pipeline:
         if data.get("cost"):
             payload["cost"] = str(data["cost"])[:100]
         if media_id:
-            payload["image"] = media_id
+            payload["image"] = str(media_id)  # TEC vuole una stringa (ID o URL)
 
         venue = dict(data.get("venue") or {})
         if not venue.get("city"):
