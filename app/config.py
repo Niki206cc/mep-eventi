@@ -53,9 +53,9 @@ class Settings:
     wp_url: str = field(default_factory=lambda: os.getenv("WP_URL", "https://www.montagneepaesi.com").rstrip("/"))
     wp_user: str = field(default_factory=lambda: os.getenv("WP_USER", ""))
     wp_app_password: str = field(default_factory=lambda: os.getenv("WP_APP_PASSWORD", ""))
-    wp_request_delay: float = field(default_factory=lambda: float(os.getenv("WP_REQUEST_DELAY", "3")))
-    wp_timeout: int = field(default_factory=lambda: _int("WP_TIMEOUT", 40))
-    wp_max_failures: int = field(default_factory=lambda: _int("WP_MAX_FAILURES", 3))
+    wp_request_delay: float = field(default_factory=lambda: float(os.getenv("WP_REQUEST_DELAY", "5")))
+    wp_timeout: int = field(default_factory=lambda: _int("WP_TIMEOUT", 25))
+    wp_max_failures: int = field(default_factory=lambda: _int("WP_MAX_FAILURES", 2))
     publish_status: str = field(default_factory=lambda: os.getenv("PUBLISH_STATUS", "draft"))  # draft | pending | publish
     add_source_link: bool = field(default_factory=lambda: _bool("ADD_SOURCE_LINK", True))
     categories: list[str] = field(default_factory=lambda: _list("EVENT_CATEGORIES", DEFAULT_CATEGORIES))
@@ -77,7 +77,7 @@ class Settings:
     max_period_days: int = field(default_factory=lambda: _int("MAX_PERIOD_DAYS", 120))
     max_new_per_run: int = field(default_factory=lambda: _int("MAX_NEW_PER_RUN", 15))
     min_image_side: int = field(default_factory=lambda: _int("MIN_IMAGE_SIDE", 300))
-    check_existing_on_site: bool = field(default_factory=lambda: _bool("CHECK_EXISTING_ON_SITE", True))
+    check_existing_on_site: bool = field(default_factory=lambda: _bool("CHECK_EXISTING_ON_SITE", False))
 
     # Esecuzione
     timezone: str = field(default_factory=lambda: os.getenv("TZ", "Europe/Rome"))

@@ -144,11 +144,8 @@ class WordPress:
         cached = self.store.cache_get("venue", key)
         if cached:
             return cached
-        found = self._req("GET", "/tribe/events/v1/venues", params={"search": name, "per_page": 50, "status": "publish"})
-        for x in found.get("venues", []):
-            if similar(x.get("venue", ""), name) > 0.88 and (not city or norm(x.get("city")) == norm(city)):
-                self.store.cache_set("venue", key, x["id"])
-                return x["id"]
+        # Niente ricerca via API: su un database grande le ricerche testuali di TEC sono lentissime
+        # e hanno bloccato il server. Si usa solo la cache locale (i luoghi creati da noi).
         payload = {
             "venue": name, "address": v.get("address") or "", "city": city,
             "province": v.get("province") or "", "zip": v.get("zip") or "",
@@ -165,11 +162,7 @@ class WordPress:
         cached = self.store.cache_get("org", key)
         if cached:
             return cached
-        found = self._req("GET", "/tribe/events/v1/organizers", params={"search": o["name"], "per_page": 50})
-        for x in found.get("organizers", []):
-            if similar(x.get("organizer", ""), o["name"]) > 0.9:
-                self.store.cache_set("org", key, x["id"])
-                return x["id"]
+        # come per i luoghi: solo cache locale, nessuna ricerca pesante sul sito
         payload = {"organizer": o["name"], "status": "publish"}
         for k in ("phone", "email", "website"):
             if o.get(k):
