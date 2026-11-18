@@ -261,3 +261,14 @@ def test_dry_run_prints(st, tmp_path, monkeypatch, capsys):
     pl.run()
     out = json.loads(capsys.readouterr().out)
     assert out["slots"] == [["2026-12-12 00:00:00", "2026-12-12 23:59:59"]]
+
+
+def test_siscom_relative_images_and_class_fallback():
+    html = """<html><body><div class="page-header-wrapper"><div class="container">
+    <h1>Mostra filatelica</h1><p>Dal 5 all'8 dicembre nella sala civica di Songavazzo una mostra di francobolli.</p>
+    <p>Aperta dalle 10 alle 18, ingresso libero, a cura del circolo filatelico locale, con annullo speciale.</p>
+    <img src="http://../../portals/1757/SiscomImmaginiNews/mostra.webp">
+    <img src="https://maps.googleapis.com/maps/api/staticmap?center=1,2"></div></div></body></html>"""
+    p = parse_page(html, "https://www.comune.songavazzo.bg.it/Dettaglionews?IDNews=1")
+    assert "francobolli" in p["text"]
+    assert p["images"] == ["https://www.comune.songavazzo.bg.it/portals/1757/SiscomImmaginiNews/mostra.webp"]

@@ -18,7 +18,10 @@ _MAIN_SELECTORS = [
     "article", "main", "[role=main]", ".entry-content", ".post-content", ".single-content",
     "#content", ".content", "#main",
 ]
-_IMG_SKIP = re.compile(r"(logo|icon|icona|favicon|sprite|placeholder|avatar|stemma|banner-app|pixel|spacer|loader)", re.I)
+_IMG_SKIP = re.compile(
+    r"(logo|icon|icona|favicon|sprite|placeholder|avatar|stemma|banner-app|pixel|spacer|loader|staticmap|maps\.googleapis|maps\.gstatic)",
+    re.I,
+)
 _CAL_LINK = re.compile(r"(calendar\.google|outlook\.live|\.ics(\?|$)|addtocalendar|action=TEMPLATE)", re.I)
 
 
@@ -73,6 +76,13 @@ def clean_text(node) -> str:
     return "\n".join(out)
 
 
+def absurl(base_url: str, src: str) -> str:
+    """urljoin che tollera src malformati tipo 'http://../../portals/x.jpg' (siti Siscom)."""
+    src = (src or "").strip()
+    src = re.sub(r"^https?://(\.\./)+", "/", src)
+    return urljoin(base_url, src)
+
+
 def html_to_text(html: str) -> str:
     return clean_text(soup_of(html))
 
@@ -90,7 +100,7 @@ def parse_page(html: str, base_url: str) -> dict:
     images: list[str] = []
     og = meta_content(soup, "og:image", "og:image:url", "twitter:image")
     if og:
-        images.append(urljoin(base_url, og))
+        images.append(absurl(base_url, og))
 
     calendar_links = []
     for a in soup.find_all("a", href=True):
@@ -105,11 +115,14 @@ def parse_page(html: str, base_url: str) -> dict:
 
     for t in soup(_NOISE_TAGS):
         t.decompose()
+    plain = soup_of(str(soup))  # copia senza la pulizia per classi, per i siti con classi "strane"
     for t in soup.find_all(attrs={"class": _NOISE_CLASS}):
         if t.name not in ("body", "html", "main", "article"):
             t.decompose()
 
     main = _main_node(soup)
+    if len(main.get_text(" ", strip=True)) < 150:
+        main = _main_node(plain)
 
     for img in main.find_all("img"):
         src = img.get("data-src") or img.get("data-lazy-src") or img.get("src") or ""
@@ -125,12 +138,12 @@ def parse_page(html: str, base_url: str) -> dict:
                 pass
         if not src or src.startswith("data:") or _IMG_SKIP.search(src + " " + (img.get("alt") or "")):
             continue
-        full = urljoin(base_url, src)
+        full = absurl(base_url, src)
         if full not in images:
             images.append(full)
     # immagini linkate direttamente (lightbox / allegati)
     for a in main.find_all("a", href=True):
-        href = urljoin(base_url, a["href"])
+        href = absurl(base_url, a["href"])
         if re.search(r"\.(jpe?g|png|webp)(\?|$)", href, re.I) and href not in images and not _IMG_SKIP.search(href):
             images.append(href)
 
