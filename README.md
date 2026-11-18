@@ -89,6 +89,7 @@ python -m app.main --once --source lovere                 # solo una fonte
 | `MAX_PERIOD_DAYS` | `120` | mostre/rassegne più lunghe di così vengono saltate |
 | `MAX_NEW_PER_RUN` | `15` | limite di nuovi eventi per giro (costi e carico sul sito) |
 | `WP_REQUEST_DELAY` | `5` | secondi minimi tra due richieste a WordPress (il doppio per le scritture) |
+| `EVENT_PAUSE` | `30` | secondi di pausa dopo ogni evento creato |
 | `WP_MAX_FAILURES` | `2` | dopo N timeout/errori 5xx di fila il giro si ferma per non sovraccaricare il sito |
 | `RUN_ON_START` | `false` | se `true` fa un giro a ogni riavvio del container |
 | `ANTHROPIC_MODEL` / `OPENAI_MODEL` | `claude-sonnet-5-5` / `gpt-4.1-mini` | modello IA |

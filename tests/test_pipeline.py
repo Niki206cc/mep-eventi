@@ -55,6 +55,7 @@ class FakeHttp:
 @pytest.fixture
 def st(tmp_path, monkeypatch):
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("EVENT_PAUSE", "0")
     return Settings()
 
 

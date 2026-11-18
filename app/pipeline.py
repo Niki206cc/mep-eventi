@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -195,6 +196,9 @@ class Pipeline:
                         if self.process(raw, today):
                             new_count += 1
                             stats["nuovi"] += 1
+                            if self.st.event_pause and not self.dry:
+                                LIVE.update(current=f"pausa {self.st.event_pause}s (protezione sito)")
+                                time.sleep(self.st.event_pause)
                     except SiteDownError:
                         raise
                     except Exception as e:  # noqa: BLE001

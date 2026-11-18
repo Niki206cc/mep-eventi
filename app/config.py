@@ -54,6 +54,7 @@ class Settings:
     wp_user: str = field(default_factory=lambda: os.getenv("WP_USER", ""))
     wp_app_password: str = field(default_factory=lambda: os.getenv("WP_APP_PASSWORD", ""))
     wp_request_delay: float = field(default_factory=lambda: float(os.getenv("WP_REQUEST_DELAY", "5")))
+    event_pause: int = field(default_factory=lambda: _int("EVENT_PAUSE", 30))  # secondi dopo ogni evento creato
     wp_timeout: int = field(default_factory=lambda: _int("WP_TIMEOUT", 25))
     wp_max_failures: int = field(default_factory=lambda: _int("WP_MAX_FAILURES", 2))
     publish_status: str = field(default_factory=lambda: os.getenv("PUBLISH_STATUS", "draft"))  # draft | pending | publish
