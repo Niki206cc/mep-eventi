@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       MEP Eventi – Prossimi eventi e segnalazioni
  * Description:       Box "Prossimi eventi" leggero per la home ([mep_prossimi_eventi]) e modulo pubblico per segnalare eventi ([mep_segnala_evento]) che crea bozze in The Events Calendar.
- * Version:           1.0.1
+ * Version:           1.0.2
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Montagne & Paesi
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'MEP_EVENTI_VERSION', '1.0.1' );
+define( 'MEP_EVENTI_VERSION', '1.0.2' );
 define( 'MEP_EVENTI_OPT', 'mep_eventi_settings' );
 
 /* -------------------------------------------------------------------------
@@ -95,6 +95,29 @@ function mep_eventi_settings_page() {
 		</form>
 	</div>
 	<?php
+}
+
+/* -------------------------------------------------------------------------
+ * Traduzioni mancanti di The Events Calendar (titoli tipo "Eventi from 18 Novembre – 22 Novembre")
+ * ---------------------------------------------------------------------- */
+
+add_filter( 'gettext_the-events-calendar', 'mep_eventi_fix_tec_strings', 10, 2 );
+add_filter( 'gettext_tribe-common', 'mep_eventi_fix_tec_strings', 10, 2 );
+
+function mep_eventi_fix_tec_strings( $translation, $text ) {
+	if ( $translation !== $text ) {
+		return $translation; // già tradotta
+	}
+	$map = array(
+		' from '    => ' dal ',
+		' for '     => ' per ',
+		'Upcoming ' => 'Prossimi ',
+		'Past '     => 'Passati ',
+	);
+	if ( false === strpos( $text, '%' ) ) {
+		return $translation; // solo frasi con segnaposto (i titoli), per non toccare altro
+	}
+	return strtr( $translation, $map );
 }
 
 /* -------------------------------------------------------------------------
