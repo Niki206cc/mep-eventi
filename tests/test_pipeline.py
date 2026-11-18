@@ -347,3 +347,11 @@ def test_wp_rest_acf_poster():
             "_embedded": {"wp:featuredmedia": [{"source_url": "https://altobrembo.it/feat.jpg"}]}}
     raws = WpRestSource({"id": "ab", "base_url": "https://altobrembo.it"}, FakeHttp({"/wp-json/wp/v2/eventi": [post]}), TODAY).fetch()
     assert raws[0].image_urls[0] == "https://altobrembo.it/loc.jpeg" and "data_evento: 20261205" in raws[0].text
+
+
+def test_pdf_only_from_content_and_skip_listino():
+    html = """<html><body><header><a href="/up/LISTINO-CO-MARKETING-2026.pdf">listino</a></header>
+    <article><h1>Festa</h1><p>""" + "testo evento " * 40 + """</p><a href="/up/programma-festa.pdf">programma</a>
+    <a href="/up/informativa-privacy.pdf">privacy</a></article><footer><a href="/up/altro.pdf">x</a></footer></body></html>"""
+    p = parse_page(html, "https://visitlakeiseo.info/eventi/festa/")
+    assert p["pdfs"] == ["https://visitlakeiseo.info/up/programma-festa.pdf"]

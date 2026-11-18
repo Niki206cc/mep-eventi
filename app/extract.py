@@ -22,6 +22,7 @@ _IMG_SKIP = re.compile(
     r"(logo|icon|icona|favicon|sprite|placeholder|avatar|stemma|banner-app|pixel|spacer|loader|staticmap|maps\.googleapis|maps\.gstatic)",
     re.I,
 )
+_PDF_SKIP = re.compile(r"(listino|privacy|cookie|informativa|regolamento|modulo|tariff|media-?kit|co-?marketing)", re.I)
 _CAL_LINK = re.compile(r"(calendar\.google|outlook\.live|\.ics(\?|$)|addtocalendar|action=TEMPLATE)", re.I)
 
 
@@ -107,11 +108,6 @@ def parse_page(html: str, base_url: str) -> dict:
         if _CAL_LINK.search(a["href"]):
             calendar_links.append(a["href"])
 
-    pdfs = []
-    for a in soup.find_all("a", href=True):
-        href = urljoin(base_url, a["href"])
-        if urlparse(href).path.lower().endswith(".pdf") and href not in pdfs:
-            pdfs.append(href)
 
     for t in soup(_NOISE_TAGS):
         t.decompose()
@@ -146,6 +142,13 @@ def parse_page(html: str, base_url: str) -> dict:
         href = absurl(base_url, a["href"])
         if re.search(r"\.(jpe?g|png|webp)(\?|$)", href, re.I) and href not in images and not _IMG_SKIP.search(href):
             images.append(href)
+
+    # PDF solo dal contenuto dell'evento (non da header/footer: listini, privacy...)
+    pdfs = []
+    for a in main.find_all("a", href=True):
+        href = absurl(base_url, a["href"])
+        if urlparse(href).path.lower().endswith(".pdf") and href not in pdfs and not _PDF_SKIP.search(href):
+            pdfs.append(href)
 
     text = clean_text(main)
     if calendar_links:

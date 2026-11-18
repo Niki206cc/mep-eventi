@@ -263,12 +263,12 @@ class Pipeline:
 
         # locandina: immagini candidate + eventuale PDF
         pictures = [p for p in (load_image(self.http, u) for u in raw.image_urls[:6]) if p]
+        best = pick_best(pictures, self.st.min_image_side)
         pdf_text = ""
         for pdf in raw.pdf_urls[:1]:
-            pic, pdf_text = render_pdf(self.http, pdf)
-            if pic:
-                pictures.append(pic)
-        best = pick_best(pictures, self.st.min_image_side)
+            pic, pdf_text = render_pdf(self.http, pdf)  # il testo del PDF serve comunque all'IA
+            if pic and best is None:  # la pagina del PDF come locandina solo se manca un'immagine valida
+                best = pick_best([pic], self.st.min_image_side)
 
         data = self.llm.analyze(raw, today, best, pdf_text)
         if not data.get("is_event"):
