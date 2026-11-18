@@ -1,0 +1,36 @@
+services:
+  mep-eventi:
+    # immagine costruita da GitHub Actions a ogni modifica (vedi .github/workflows/docker.yml)
+    # sostituisci "tuo-utente" con il tuo nome utente GitHub (tutto minuscolo)
+    image: ${IMAGE:-ghcr.io/tuo-utente/mep-eventi:latest}
+    pull_policy: always
+    container_name: mep-eventi
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Rome
+      # --- WordPress (Utenti > Profilo > Password applicazione)
+      WP_URL: ${WP_URL:-https://www.montagneepaesi.com}
+      WP_USER: ${WP_USER}
+      WP_APP_PASSWORD: ${WP_APP_PASSWORD}
+      PUBLISH_STATUS: ${PUBLISH_STATUS:-draft}
+      # --- IA: anthropic oppure openai
+      LLM_PROVIDER: ${LLM_PROVIDER:-anthropic}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-5-5}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+      # --- Telegram (facoltativo)
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      # --- Pianificazione e regole
+      RUN_AT: ${RUN_AT:-05:30}
+      RUN_ON_START: ${RUN_ON_START:-true}
+      HORIZON_DAYS: ${HORIZON_DAYS:-120}
+      SKIP_RECURRING: ${SKIP_RECURRING:-true}
+      MAX_NEW_PER_RUN: ${MAX_NEW_PER_RUN:-40}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - mep_eventi_data:/data
+
+volumes:
+  mep_eventi_data:

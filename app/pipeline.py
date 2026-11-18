@@ -1,0 +1,367 @@
+"""Flusso principale: fonti -> pagina -> locandina -> IA -> anti-duplicati -> The Events Calendar."""
+from __future__ import annotations
+
+import json
+import logging
+import re
+from collections import Counter
+from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
+
+from .config import Settings
+from .extract import parse_page
+from .http import Http
+from .images import load_image, pick_best, render_pdf, slugify
+from .llm import LLM
+from .models import RawEvent
+from .notify import esc, telegram
+from .sources import build_source
+from .store import FINAL, Store
+from .wordpress import WordPress, norm, similar
+
+log = logging.getLogger(__name__)
+
+MAX_ATTEMPTS = 3
+
+
+# ---------------------------------------------------------------------- pianificazione date
+@dataclass
+class Slot:
+    start_day: date
+    end_day: date
+    start_time: str | None
+    end_time: str | None
+
+    @property
+    def all_day(self) -> bool:
+        return not self.start_time
+
+    def wp_dates(self) -> tuple[str, str]:
+        if self.all_day:
+            return f"{self.start_day} 00:00:00", f"{self.end_day} 23:59:59"
+        st = datetime.combine(self.start_day, _t(self.start_time))
+        if self.end_time:
+            en = datetime.combine(self.end_day, _t(self.end_time))
+            if en <= st:  # finisce dopo mezzanotte
+                en += timedelta(days=1)
+        else:
+            en = st + timedelta(hours=2)
+            if self.end_day > self.start_day:
+                en = datetime.combine(self.end_day, en.time())
+        return st.strftime("%Y-%m-%d %H:%M:%S"), en.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _t(hhmm: str):
+    h, m = (hhmm.strip().replace(".", ":") + ":00").split(":")[:2]
+    return datetime.strptime(f"{int(h) % 24:02d}:{int(m):02d}", "%H:%M").time()
+
+
+def _valid_time(v) -> str | None:
+    if not v or not isinstance(v, str):
+        return None
+    m = re.match(r"^\s*(\d{1,2})[:.](\d{2})", v)
+    if not m or int(m.group(1)) > 24 or int(m.group(2)) > 59:
+        return None
+    return f"{int(m.group(1)) % 24:02d}:{m.group(2)}"
+
+
+def _valid_date(v) -> date | None:
+    try:
+        return date.fromisoformat(str(v)[:10])
+    except (ValueError, TypeError):
+        return None
+
+
+def plan_slots(data: dict, today: date, st: Settings) -> tuple[str, list[Slot]]:
+    """Ritorna (stato, slot). stato 'ok' oppure il motivo dello scarto."""
+    kind = (data.get("kind") or "singolo").lower()
+    occ = []
+    for o in data.get("occurrences") or []:
+        d = _valid_date(o.get("date")) if isinstance(o, dict) else None
+        if d:
+            occ.append((d, _valid_time(o.get("start_time")), _valid_time(o.get("end_time"))))
+    occ.sort(key=lambda x: x[0])
+    if not occ:
+        return "no_dates", []
+    horizon = today + timedelta(days=st.horizon_days)
+
+    if kind == "ricorrente" and st.skip_recurring:
+        return "recurring_skipped", []
+
+    if kind in ("periodo", "ricorrente"):
+        start = occ[0][0]
+        end = _valid_date(data.get("period_end")) or occ[-1][0]
+        if end < start:
+            end = start
+        if end < today:
+            return "past", []
+        if start > horizon:
+            return "out_of_horizon", []
+        if (end - start).days > st.max_period_days:
+            return "too_long", []
+        return "ok", [Slot(start, end, occ[0][1], occ[0][2])]
+
+    future = [o for o in occ if today <= o[0] <= horizon]
+    if not future:
+        return ("past" if occ[-1][0] < today else "out_of_horizon"), []
+    return "ok", [Slot(d, d, s, e) for d, s, e in future[: st.max_occurrences]]
+
+
+# ---------------------------------------------------------------------- report
+@dataclass
+class Report:
+    created: list[str] = field(default_factory=list)
+    updated: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    skipped: Counter = field(default_factory=Counter)
+    notes: list[str] = field(default_factory=list)
+
+    def text(self, st: Settings) -> str:
+        lines = [f"<b>Montagne &amp; Paesi – import eventi</b> ({datetime.now(ZoneInfo(st.timezone)):%d/%m %H:%M})"]
+        stato = {"draft": "in bozza", "pending": "in revisione", "publish": "pubblicati"}.get(st.publish_status, st.publish_status)
+        lines.append(f"Nuovi eventi: <b>{len(self.created)}</b> ({stato})")
+        lines += self.created[:40]
+        if self.updated:
+            lines.append(f"Aggiornati: {len(self.updated)}")
+            lines += self.updated[:20]
+        if self.skipped:
+            labels = {"not_event": "non eventi", "past": "passati", "duplicate": "duplicati",
+                      "recurring_skipped": "ricorrenti", "out_of_horizon": "troppo lontani",
+                      "no_dates": "senza date", "too_long": "periodo troppo lungo"}
+            lines.append("Scartati: " + ", ".join(f"{labels.get(k, k)} {v}" for k, v in self.skipped.items()))
+        if self.errors:
+            lines.append(f"<b>Errori: {len(self.errors)}</b>")
+            lines += [f"• {esc(e)}" for e in self.errors[:15]]
+        lines += self.notes
+        return "\n".join(lines)
+
+
+def sanitize_html(h: str) -> str:
+    h = re.sub(r"(?is)<(script|style|iframe|object|embed)[^>]*>.*?</\1>", "", h or "")
+    h = re.sub(r"(?i)\son\w+\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", "", h)
+    h = re.sub(r"(?i)javascript:", "", h)
+    return h.strip()
+
+
+# ---------------------------------------------------------------------- pipeline
+class Pipeline:
+    def __init__(self, st: Settings, dry_run: bool = False):
+        self.st = st
+        self.dry = dry_run
+        self.tz = ZoneInfo(st.timezone)
+        self.http = Http(st.user_agent, st.request_delay)
+        self.store = Store(st.data_dir)
+        self.llm = LLM(st)
+        self.wp = None if dry_run else WordPress(st, self.store)
+        self.report = Report()
+
+    def run(self, only_source: str | None = None, limit: int | None = None) -> Report:
+        today = datetime.now(self.tz).date()
+        if self.wp:
+            self.wp.check()
+        sources = [s for s in self.st.load_sources() if not only_source or s["id"] == only_source]
+        new_count = 0
+        for cfg in sources:
+            try:
+                raws = build_source(cfg, self.http, today).fetch()
+            except Exception as e:  # noqa: BLE001
+                log.exception("fonte %s non disponibile", cfg.get("id"))
+                self.report.errors.append(f"{cfg.get('name', cfg.get('id'))}: fonte non raggiungibile ({e})"[:300])
+                continue
+            for raw in raws[:limit] if limit else raws:
+                if new_count >= self.st.max_new_per_run:
+                    self.report.notes.append(f"Raggiunto il limite di {self.st.max_new_per_run} nuovi eventi: il resto al prossimo giro.")
+                    break
+                try:
+                    if self.process(raw, today):
+                        new_count += 1
+                except Exception as e:  # noqa: BLE001
+                    log.exception("errore su %s", raw.url)
+                    self._fail(raw, e)
+            else:
+                continue
+            break
+        if not self.dry:
+            telegram(self.st, self.report.text(self.st))
+        log.info("Fine: %d nuovi, %d aggiornati, scartati %s, errori %d",
+                 len(self.report.created), len(self.report.updated), dict(self.report.skipped), len(self.report.errors))
+        return self.report
+
+    # ------------------------------------------------------------------
+    def _fail(self, raw: RawEvent, e: Exception):
+        row = self.store.get(raw.source_id, raw.uid)
+        attempts = (row["attempts"] if row else 0) + 1
+        if not self.dry:
+            self.store.save(raw.source_id, raw.uid, url=raw.url, title=raw.title, status="error",
+                            attempts=attempts, note=str(e)[:500], content_hash=raw.content_hash())
+        self.report.errors.append(f"{raw.title or raw.url}: {e}"[:300])
+
+    def _skip(self, raw: RawEvent, status: str, note: str = "") -> bool:
+        self.report.skipped[status] += 1
+        log.info("[%s] scartato (%s) %s %s", raw.source_id, status, raw.title[:60], note)
+        if not self.dry:
+            self.store.save(raw.source_id, raw.uid, url=raw.url, title=raw.title, status=status,
+                            content_hash=raw.content_hash(), note=note[:500], attempts=0)
+        return False
+
+    def process(self, raw: RawEvent, today: date) -> bool:
+        row = self.store.get(raw.source_id, raw.uid)
+
+        if raw.needs_page_fetch:
+            html = self.http.get_text(raw.url)
+            enrich_from_page(raw, html)
+
+        h = raw.content_hash()
+        if row and row["content_hash"] == h:
+            if row["status"] in FINAL or (row["status"] == "error" and row["attempts"] >= MAX_ATTEMPTS):
+                return False
+
+        end_hint = _valid_date(raw.hints.get("end_date"))
+        if end_hint and end_hint < today:
+            return self._skip(raw, "past")
+
+        # locandina: immagini candidate + eventuale PDF
+        pictures = [p for p in (load_image(self.http, u) for u in raw.image_urls[:6]) if p]
+        pdf_text = ""
+        for pdf in raw.pdf_urls[:1]:
+            pic, pdf_text = render_pdf(self.http, pdf)
+            if pic:
+                pictures.append(pic)
+        best = pick_best(pictures, self.st.min_image_side)
+
+        data = self.llm.analyze(raw, today, best, pdf_text)
+        if not data.get("is_event"):
+            return self._skip(raw, "not_event", data.get("not_event_reason") or "")
+
+        status, slots = plan_slots(data, today, self.st)
+        if status != "ok":
+            return self._skip(raw, status)
+
+        title = (data.get("title") or raw.title).strip()[:150]
+        venue = data.get("venue") or {}
+        city = venue.get("city") or raw.hints.get("comune") or ""
+
+        if self.dry:
+            print(json.dumps({"fonte": raw.source_id, "url": raw.url, "immagine": best.source_url if best else None,
+                              "slots": [s.wp_dates() for s in slots], "ia": data}, ensure_ascii=False, indent=2))
+            self.report.created.append(title)
+            return True
+
+        # già importato ma cambiato alla fonte -> aggiorna
+        old_ids = self.store.wp_ids(row) if row else []
+        if row and row["status"] in ("created", "updated") and old_ids:
+            if len(old_ids) == 1 and len(slots) == 1:
+                payload = self._payload(raw, data, slots[0], row["media_id"])
+                self.wp.update_event(old_ids[0], payload)
+                self.store.save(raw.source_id, raw.uid, status="updated", content_hash=h, title=title, attempts=0)
+                self.report.updated.append(f"• <a href=\"{self.wp.edit_link(old_ids[0])}\">{esc(title)}</a>")
+            else:
+                self.store.save(raw.source_id, raw.uid, content_hash=h, note="modificato alla fonte: da controllare")
+                self.report.notes.append(f"Da controllare (cambiato alla fonte): {esc(title)} – {raw.url}")
+            return False
+
+        # anti-duplicati: stesso giorno, titolo simile (altre fonti o già sul sito)
+        todo = []
+        for s in slots:
+            day = s.start_day.isoformat()
+            dup = None
+            for fp in self.store.fingerprints_on(day):
+                if (fp["source_id"], fp["uid"]) == (raw.source_id, raw.uid):
+                    continue
+                if similar(fp["title"], title) > 0.82 and (not city or not fp["city"] or norm(fp["city"]) == norm(city)):
+                    dup = fp["wp_id"]
+                    break
+            if dup is None and self.st.check_existing_on_site:
+                dup = self.wp.find_existing(title, day)
+            if dup is None:
+                todo.append(s)
+        if not todo:
+            return self._skip(raw, "duplicate")
+
+        media_id = row["media_id"] if row and row["media_id"] else None
+        if best and not media_id:
+            slug = slugify(title)
+            media_id = self.wp.upload_media(best.data, best.filename(slug), best.mime, title=title,
+                                            alt=f"Locandina: {title}", caption=f"Fonte: {raw.source_name}")
+
+        created = []
+        for s in todo:
+            payload = self._payload(raw, data, s, media_id)
+            ev = self.wp.create_event(payload)
+            created.append(ev["id"])
+            self.store.add_fingerprint(s.start_day.isoformat(), city, title, ev["id"], raw.source_id, raw.uid)
+
+        self.store.save(raw.source_id, raw.uid, url=raw.url, title=title, status="created", wp_ids=created,
+                        media_id=media_id, content_hash=h, attempts=0, note="")
+        first = todo[0].start_day.strftime("%d/%m")
+        extra = f" (+{len(created) - 1} date)" if len(created) > 1 else ""
+        self.report.created.append(
+            f"• <a href=\"{self.wp.edit_link(created[0])}\">{esc(title)}</a> – {first}{extra}, {esc(city)} <i>[{esc(raw.source_id)}]</i>")
+        log.info("[%s] creato %s -> %s", raw.source_id, title, created)
+        return True
+
+    # ------------------------------------------------------------------
+    def _payload(self, raw: RawEvent, data: dict, slot: Slot, media_id: int | None) -> dict:
+        start, end = slot.wp_dates()
+        desc = sanitize_html(data.get("description_html") or "")
+        if self.st.add_source_link:
+            desc += (f'\n<p class="mep-fonte"><em>Fonte: <a href="{raw.url}" target="_blank" '
+                     f'rel="noopener nofollow">{esc(raw.source_name)}</a></em></p>')
+        payload = {
+            "title": (data.get("title") or raw.title).strip()[:150],
+            "description": desc,
+            "excerpt": (data.get("excerpt") or "")[:300],
+            "start_date": start,
+            "end_date": end,
+            "all_day": slot.all_day,
+            "timezone": self.st.timezone,
+            "status": self.st.publish_status,
+            "website": raw.url,
+        }
+        if data.get("cost"):
+            payload["cost"] = str(data["cost"])[:100]
+        if media_id:
+            payload["image"] = media_id
+
+        venue = dict(data.get("venue") or {})
+        if not venue.get("city"):
+            venue["city"] = (raw.hints.get("comune") or "").split(",")[0].strip() or None
+        if not venue.get("province"):
+            venue["province"] = raw.hints.get("provincia")
+        vid = self.wp.venue_id(venue)
+        if vid:
+            payload["venue"] = vid
+        oid = self.wp.organizer_id(data.get("organizer"))
+        if oid:
+            payload["organizer"] = [oid]
+
+        cat = data.get("category")
+        if cat not in self.st.categories:
+            cat = "Altro" if "Altro" in self.st.categories else None
+        cid = self.wp.category_id(cat) if cat else None
+        if cid:
+            payload["categories"] = [cid]
+
+        tags = []
+        if self.st.tag_comune and (venue.get("city") or raw.hints.get("comune")):
+            tags.append((venue.get("city") or raw.hints.get("comune")).split(",")[0].strip())
+        if self.st.tag_zona and raw.hints.get("zona"):
+            tags.append(raw.hints["zona"])
+        tag_ids = list(dict.fromkeys(t for t in (self.wp.tag_id(x) for x in dict.fromkeys(tags)) if t))
+        if tag_ids:
+            payload["tags"] = tag_ids
+        return payload
+
+
+def enrich_from_page(raw: RawEvent, html: str) -> None:
+    page = parse_page(html, raw.url)
+    raw.title = raw.title or page["title"]
+    if page["text"]:
+        raw.text = (raw.text + "\n\n--- Pagina web ---\n" + page["text"]).strip() if raw.text else page["text"]
+    for u in page["images"]:
+        if u not in raw.image_urls:
+            raw.image_urls.append(u)
+    for u in page["pdfs"]:
+        if u not in raw.pdf_urls:
+            raw.pdf_urls.append(u)

@@ -1,0 +1,7 @@
+# Alternativa: costruisce l'immagine in locale invece di scaricarla da GitHub.
+# docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+services:
+  mep-eventi:
+    build: .
+    image: mep-eventi:local
+    pull_policy: build

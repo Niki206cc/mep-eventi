@@ -1,0 +1,90 @@
+# Fonti degli eventi.
+# Per aggiungere un comune basta aggiungere un blocco qui sotto e aggiornare lo stack.
+#
+# Tipi disponibili:
+#   wp_valseriana  -> API REST di valseriana.eu (Promoserio)
+#   municipium     -> comuni su piattaforma Municipium (API JSON pubblica)
+#   html           -> qualsiasi sito: legge le pagine elenco, segue i link che
+#                     corrispondono a link_pattern e fa estrarre i dati all'IA
+#
+# Campi comuni:
+#   enabled: true/false
+#   zona / provincia / comune: suggerimenti per l'IA e tag sul calendario
+
+sources:
+  - id: valseriana
+    type: wp_valseriana
+    enabled: true
+    name: "VisitValSeriana (Promoserio)"
+    base_url: https://www.valseriana.eu
+    zona: "Val Seriana e Val di Scalve"
+    provincia: BG
+    max_pages: 4          # 50 eventi per pagina, ordinati per ultima modifica
+    # only_comuni: [clusone, rovetta, songavazzo]   # slug dei comuni da tenere (vuoto = tutti)
+
+  - id: clusone
+    type: municipium
+    enabled: true
+    name: "Comune di Clusone"
+    api: https://clusone-api.municipiumapp.it
+    site_url: https://www.comune.clusone.bg.it   # per il link "Fonte" (facoltativo)
+    comune: Clusone
+    zona: "Val Seriana"
+    provincia: BG
+
+  - id: darfo
+    type: municipium
+    enabled: true
+    name: "Comune di Darfo Boario Terme"
+    api: https://darfo-boario-terme-api.municipiumapp.it
+    comune: "Darfo Boario Terme"
+    zona: "Valle Camonica"
+    provincia: BS
+
+  - id: costavolpino
+    type: municipium
+    enabled: true
+    name: "Comune di Costa Volpino"
+    api: https://costavolpino-api.municipiumapp.it
+    comune: "Costa Volpino"
+    zona: "Alto Sebino"
+    provincia: BG
+
+  - id: rovetta
+    type: html
+    enabled: true
+    name: "Comune di Rovetta"
+    listing_urls:
+      - https://www.comune.rovetta.bg.it/eventi
+    link_pattern: '/eventi/\d+/[^/?#]+'
+    comune: Rovetta
+    zona: "Val Seriana"
+    provincia: BG
+
+  - id: lovere
+    type: html
+    enabled: true
+    name: "Lovere Eventi (Comune di Lovere)"
+    listing_urls:
+      - https://www.lovereeventi.it/eventi/
+      - https://www.lovereeventi.it/
+    pagination: "page/{n}/"   # aggiunto alla prima listing_url per le pagine 2..max_pages
+    max_pages: 3
+    link_pattern: 'lovereeventi\.it/eventi/[a-z0-9\-]+/?$'
+    exclude_pattern: '/eventi/page/|/eventi/?$'
+    comune: Lovere
+    zona: "Alto Sebino"
+    provincia: BG
+
+  - id: songavazzo
+    type: html
+    enabled: true
+    name: "Comune di Songavazzo"
+    listing_urls:
+      - https://www.comune.songavazzo.bg.it/Eventi
+      - https://www.comune.songavazzo.bg.it/
+    # gli eventi spesso sono pubblicati come news: l'IA scarta ciò che non è un evento
+    link_pattern: '(?i)(dettaglionews\?idnews=\d+|idevento=\d+|dettaglio-?evento)'
+    comune: Songavazzo
+    zona: "Val Seriana"
+    provincia: BG
