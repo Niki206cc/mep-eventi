@@ -272,3 +272,35 @@ def test_siscom_relative_images_and_class_fallback():
     p = parse_page(html, "https://www.comune.songavazzo.bg.it/Dettaglionews?IDNews=1")
     assert "francobolli" in p["text"]
     assert p["images"] == ["https://www.comune.songavazzo.bg.it/portals/1757/SiscomImmaginiNews/mostra.webp"]
+
+
+def test_web_endpoints(st, tmp_path, monkeypatch):
+    import threading, urllib.request, base64
+    from http.server import ThreadingHTTPServer
+    from app.web import App, make_handler
+    from app.store import Store
+    sf = tmp_path / "s.yaml"
+    sf.write_text("sources:\n  - {id: clusone, type: municipium, api: 'x', name: Comune di Clusone}\n")
+    st.sources_file = sf
+    s = Store(st.data_dir)
+    rid = s.start_run("test")
+    s.save("clusone", "1", url="u", title="Concerto", status="created", wp_ids=[5], event_date="2026-12-12", city="Clusone")
+    s.finish_run(rid, "ok", created=1, per_source={"clusone": {"trovati": 3, "nuovi": 1, "errori": 0}}, report="<b>ok</b>")
+    calls = []
+    st.web_password = "pw"
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(App(st, lambda src, dry: calls.append((src, dry)) or True)))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_port}"
+    auth = {"Authorization": "Basic " + base64.b64encode(b"admin:pw").decode()}
+    def get(p, h=auth):
+        return urllib.request.urlopen(urllib.request.Request(base + p, headers=h))
+    with pytest.raises(urllib.error.HTTPError):
+        get("/api/status", {})
+    assert b"MEP Eventi" in get("/").read()
+    stt = json.loads(get("/api/status").read())
+    assert stt["counts"]["by_status"]["created"] == 1 and stt["last_run"]["per_source"]["clusone"]["trovati"] == 3
+    items = json.loads(get("/api/items?status=created").read())
+    assert items[0]["wp_ids"] == [5]
+    req = urllib.request.Request(base + "/api/run", data=b'{"source":"clusone","dry":true}', headers=auth | {"Content-Type": "application/json"}, method="POST")
+    assert json.loads(urllib.request.urlopen(req).read())["started"] and calls == [("clusone", True)]
+    srv.shutdown()

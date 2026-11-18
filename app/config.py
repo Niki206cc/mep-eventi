@@ -92,6 +92,12 @@ class Settings:
     telegram_token: str = field(default_factory=lambda: os.getenv("TELEGRAM_BOT_TOKEN", ""))
     telegram_chat_id: str = field(default_factory=lambda: os.getenv("TELEGRAM_CHAT_ID", ""))
 
+    # Interfaccia web
+    web_enabled: bool = field(default_factory=lambda: _bool("WEB_ENABLED", True))
+    web_port: int = field(default_factory=lambda: _int("WEB_PORT", 8080))
+    web_user: str = field(default_factory=lambda: os.getenv("WEB_USER", "admin"))
+    web_password: str = field(default_factory=lambda: os.getenv("WEB_PASSWORD", ""))
+
     log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
 
     def load_sources(self) -> list[dict]:

@@ -17,5 +17,6 @@ RUN pip install -r requirements.txt
 COPY app ./app
 COPY config ./config
 
+EXPOSE 8080
 VOLUME ["/data"]
 CMD ["python", "-m", "app.main"]

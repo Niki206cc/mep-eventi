@@ -53,6 +53,20 @@ A ogni modifica su `main`, GitHub Actions esegue i test e costruisce l'immagine 
 
 Senza GitHub Actions puoi costruire in locale con `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`.
 
+## Interfaccia web
+
+Su **http://homeassistant.local:8095** (porta cambiabile con `WEB_HOST_PORT`) trovi:
+
+- **stato** del servizio, avanzamento del giro in corso, prossimo giro;
+- **Eventi**: tutto ciò che è stato letto, con stato (creato, duplicato, non è un evento, passato…), note dell'IA,
+  link alla fonte e alla bozza in WordPress, pulsante *Riprova*;
+- **Giri**: storico delle esecuzioni con il riepilogo di ciascuna;
+- **Fonti**: quanti eventi ha trovato ogni fonte e se è raggiungibile, con un pulsante per lanciarla da sola;
+- **Log** in tempo reale;
+- pulsanti **Esegui ora** e **Prova** (analizza senza scrivere sul sito).
+
+Per proteggerla con una password imposta `WEB_PASSWORD` (utente `WEB_USER`, default `admin`).
+
 ## Comandi utili
 
 Dalla console del container (Portainer → Containers → mep-eventi → Console):

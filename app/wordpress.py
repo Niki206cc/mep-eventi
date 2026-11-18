@@ -121,7 +121,7 @@ class WordPress:
         payload = {
             "venue": name, "address": v.get("address") or "", "city": city,
             "province": v.get("province") or "", "zip": v.get("zip") or "",
-            "country": "Italia", "show_map": True, "show_map_link": True, "status": "publish",
+            "country": "Italia", "status": "publish",
         }
         x = self._req("POST", "/tribe/events/v1/venues", json=payload)
         self.store.cache_set("venue", key, x["id"])

@@ -17,6 +17,7 @@ from .llm import LLM
 from .models import RawEvent
 from .notify import esc, telegram
 from .sources import build_source
+from .state import LIVE
 from .store import FINAL, Store
 from .wordpress import WordPress, norm, similar
 
@@ -156,36 +157,63 @@ class Pipeline:
         self.wp = None if dry_run else WordPress(st, self.store)
         self.report = Report()
 
-    def run(self, only_source: str | None = None, limit: int | None = None) -> Report:
+    def run(self, only_source: str | None = None, limit: int | None = None, trigger: str = "pianificato") -> Report:
         today = datetime.now(self.tz).date()
-        if self.wp:
-            self.wp.check()
-        sources = [s for s in self.st.load_sources() if not only_source or s["id"] == only_source]
-        new_count = 0
-        for cfg in sources:
-            try:
-                raws = build_source(cfg, self.http, today).fetch()
-            except Exception as e:  # noqa: BLE001
-                log.exception("fonte %s non disponibile", cfg.get("id"))
-                self.report.errors.append(f"{cfg.get('name', cfg.get('id'))}: fonte non raggiungibile ({e})"[:300])
-                continue
-            for raw in raws[:limit] if limit else raws:
-                if new_count >= self.st.max_new_per_run:
-                    self.report.notes.append(f"Raggiunto il limite di {self.st.max_new_per_run} nuovi eventi: il resto al prossimo giro.")
+        run_id = None if self.dry else self.store.start_run(trigger + (f" ({only_source})" if only_source else ""))
+        per_source: dict[str, dict] = {}
+        status = "ok"
+        LIVE.update(running=True, trigger=trigger, started_at=datetime.now(), source="", done=0, total=0, current="")
+        try:
+            if self.wp:
+                self.wp.check()
+            sources = [s for s in self.st.load_sources() if not only_source or s["id"] == only_source]
+            new_count = 0
+            stop = False
+            for cfg in sources:
+                if stop:
                     break
+                stats = per_source.setdefault(cfg["id"], {"trovati": 0, "nuovi": 0, "errori": 0})
+                LIVE.update(source=cfg.get("name", cfg["id"]), done=0, total=0, current="lettura fonte…")
                 try:
-                    if self.process(raw, today):
-                        new_count += 1
+                    raws = build_source(cfg, self.http, today).fetch()
                 except Exception as e:  # noqa: BLE001
-                    log.exception("errore su %s", raw.url)
-                    self._fail(raw, e)
-            else:
-                continue
-            break
-        if not self.dry:
-            telegram(self.st, self.report.text(self.st))
-        log.info("Fine: %d nuovi, %d aggiornati, scartati %s, errori %d",
-                 len(self.report.created), len(self.report.updated), dict(self.report.skipped), len(self.report.errors))
+                    log.exception("fonte %s non disponibile", cfg.get("id"))
+                    self.report.errors.append(f"{cfg.get('name', cfg.get('id'))}: fonte non raggiungibile ({e})"[:300])
+                    stats["errori"] += 1
+                    stats["fonte_ko"] = str(e)[:200]
+                    continue
+                todo = raws[:limit] if limit else raws
+                stats["trovati"] = len(raws)
+                LIVE.update(total=len(todo))
+                for n, raw in enumerate(todo, 1):
+                    if new_count >= self.st.max_new_per_run:
+                        self.report.notes.append(f"Raggiunto il limite di {self.st.max_new_per_run} nuovi eventi: il resto al prossimo giro.")
+                        stop = True
+                        break
+                    LIVE.update(done=n, current=raw.title or raw.url)
+                    try:
+                        if self.process(raw, today):
+                            new_count += 1
+                            stats["nuovi"] += 1
+                    except Exception as e:  # noqa: BLE001
+                        log.exception("errore su %s", raw.url)
+                        stats["errori"] += 1
+                        self._fail(raw, e)
+        except Exception as e:  # noqa: BLE001
+            status = "fallito"
+            self.report.errors.append(f"Giro interrotto: {e}"[:400])
+            raise
+        finally:
+            if self.report.errors and status == "ok":
+                status = "con errori"
+            if not self.dry:
+                telegram(self.st, self.report.text(self.st))
+                self.store.finish_run(run_id, status, len(self.report.created), len(self.report.updated),
+                                      sum(self.report.skipped.values()), len(self.report.errors), per_source,
+                                      self.report.text(self.st))
+            LIVE.update(running=False, current="", source="")
+            log.info("Fine: %d nuovi, %d aggiornati, scartati %s, errori %d",
+                     len(self.report.created), len(self.report.updated), dict(self.report.skipped), len(self.report.errors))
         return self.report
 
     # ------------------------------------------------------------------
@@ -194,15 +222,17 @@ class Pipeline:
         attempts = (row["attempts"] if row else 0) + 1
         if not self.dry:
             self.store.save(raw.source_id, raw.uid, url=raw.url, title=raw.title, status="error",
-                            attempts=attempts, note=str(e)[:500], content_hash=raw.content_hash())
+                            attempts=attempts, note=str(e)[:500], content_hash=raw.content_hash(),
+                            source_name=raw.source_name)
         self.report.errors.append(f"{raw.title or raw.url}: {e}"[:300])
 
     def _skip(self, raw: RawEvent, status: str, note: str = "") -> bool:
         self.report.skipped[status] += 1
         log.info("[%s] scartato (%s) %s %s", raw.source_id, status, raw.title[:60], note)
         if not self.dry:
-            self.store.save(raw.source_id, raw.uid, url=raw.url, title=raw.title, status=status,
-                            content_hash=raw.content_hash(), note=note[:500], attempts=0)
+            self.store.save(raw.source_id, raw.uid, url=raw.url, title=raw.title or raw.url, status=status,
+                            content_hash=raw.content_hash(), note=note[:500], attempts=0, source_name=raw.source_name,
+                            event_date=raw.hints.get("start_date"), city=raw.hints.get("comune"))
         return False
 
     def process(self, raw: RawEvent, today: date) -> bool:
@@ -284,6 +314,9 @@ class Pipeline:
             slug = slugify(title)
             media_id = self.wp.upload_media(best.data, best.filename(slug), best.mime, title=title,
                                             alt=f"Locandina: {title}", caption=f"Fonte: {raw.source_name}")
+            # salvato subito: se la creazione dell'evento fallisce, al giro dopo si riusa la stessa immagine
+            self.store.save(raw.source_id, raw.uid, url=raw.url, title=title, media_id=media_id,
+                            source_name=raw.source_name)
 
         created = []
         for s in todo:
@@ -293,7 +326,9 @@ class Pipeline:
             self.store.add_fingerprint(s.start_day.isoformat(), city, title, ev["id"], raw.source_id, raw.uid)
 
         self.store.save(raw.source_id, raw.uid, url=raw.url, title=title, status="created", wp_ids=created,
-                        media_id=media_id, content_hash=h, attempts=0, note="")
+                        media_id=media_id, content_hash=h, attempts=0, note="", source_name=raw.source_name,
+                        event_date=todo[0].start_day.isoformat(), city=city,
+                        image_url=best.source_url if best else None)
         first = todo[0].start_day.strftime("%d/%m")
         extra = f" (+{len(created) - 1} date)" if len(created) > 1 else ""
         self.report.created.append(

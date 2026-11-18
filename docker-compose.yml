@@ -6,6 +6,8 @@ services:
     pull_policy: always
     container_name: mep-eventi
     restart: unless-stopped
+    ports:
+      - "${WEB_HOST_PORT:-8095}:8080"   # interfaccia web: http://homeassistant.local:8095
     environment:
       TZ: Europe/Rome
       # --- WordPress (Utenti > Profilo > Password applicazione)
@@ -29,6 +31,9 @@ services:
       SKIP_RECURRING: ${SKIP_RECURRING:-true}
       MAX_NEW_PER_RUN: ${MAX_NEW_PER_RUN:-40}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # --- Interfaccia web (lascia WEB_PASSWORD vuota per nessuna password)
+      WEB_USER: ${WEB_USER:-admin}
+      WEB_PASSWORD: ${WEB_PASSWORD:-}
     volumes:
       - mep_eventi_data:/data
 
