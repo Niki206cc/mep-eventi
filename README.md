@@ -108,3 +108,12 @@ python -m app.main --once --source lovere                 # solo una fonte
 pip install -r requirements.txt pytest
 pytest -q
 ```
+
+## Plugin WordPress (cartella `wordpress/mep-eventi`)
+
+Plugin leggero per il sito, separato dal container:
+
+- `[mep_prossimi_eventi numero="6"]`: griglia dei prossimi eventi con locandina, per la home (niente JavaScript, cache di 10 minuti);
+- `[mep_segnala_evento]`: modulo pubblico e gratuito per segnalare un evento, che crea una **bozza** in The Events Calendar e manda un'email alla redazione. Antispam con honeypot, controllo dei tempi e limite per IP; Cloudflare Turnstile facoltativo.
+
+Installazione: comprimi la cartella in zip, poi *Plugin → Aggiungi nuovo → Carica plugin*. Impostazioni in *Impostazioni → MEP Eventi*.
