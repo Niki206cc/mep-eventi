@@ -87,7 +87,10 @@ python -m app.main --once --source lovere                 # solo una fonte
 | `SKIP_RECURRING` | `true` | salta corsi settimanali, mercati fissi e simili |
 | `MAX_OCCURRENCES` | `8` | per eventi con più date, quante creare al massimo |
 | `MAX_PERIOD_DAYS` | `120` | mostre/rassegne più lunghe di così vengono saltate |
-| `MAX_NEW_PER_RUN` | `40` | limite di nuovi eventi per giro (controllo costi) |
+| `MAX_NEW_PER_RUN` | `15` | limite di nuovi eventi per giro (costi e carico sul sito) |
+| `WP_REQUEST_DELAY` | `3` | secondi minimi tra due richieste a WordPress (il doppio per le scritture) |
+| `WP_MAX_FAILURES` | `3` | dopo N timeout/errori 5xx di fila il giro si ferma per non sovraccaricare il sito |
+| `RUN_ON_START` | `false` | se `true` fa un giro a ogni riavvio del container |
 | `ANTHROPIC_MODEL` / `OPENAI_MODEL` | `claude-sonnet-5-5` / `gpt-4.1-mini` | modello IA |
 | `LLM_VISION` | `true` | l'IA legge anche la locandina (utile quando le info sono solo lì) |
 | `EVENT_CATEGORIES` | vedi `app/config.py` | categorie del calendario, separate da virgola |

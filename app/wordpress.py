@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 import unicodedata
 from difflib import SequenceMatcher
 
@@ -27,6 +28,10 @@ class WordPressError(RuntimeError):
     pass
 
 
+class SiteDownError(WordPressError):
+    """Il sito non risponde (timeout / errori 5xx ripetuti): il giro va interrotto per non sovraccaricarlo."""
+
+
 class WordPress:
     def __init__(self, st: Settings, store: Store):
         self.st = st
@@ -35,23 +40,49 @@ class WordPress:
         self.s = requests.Session()
         self.s.auth = (st.wp_user, st.wp_app_password.replace(" ", ""))
         self.s.headers["User-Agent"] = "MEP-Eventi/1.0"
+        self._last = 0.0
+        self.failures = 0
 
     # ------------------------------------------------------------------ base
     def _req(self, method: str, path: str, **kw):
+        """Richiesta a WordPress con pausa minima tra le chiamate e interruttore di sicurezza:
+        dopo WP_MAX_FAILURES errori di server consecutivi solleva SiteDownError."""
         url = path if path.startswith("http") else f"{self.api}{path}"
-        kw.setdefault("timeout", 60)
-        r = self.s.request(method, url, **kw)
+        kw.setdefault("timeout", self.st.wp_timeout)
+        wait = self.st.wp_request_delay * (2 if method != "GET" else 1) - (time.monotonic() - self._last)
+        if wait > 0:
+            time.sleep(wait)
+        try:
+            r = self.s.request(method, url, **kw)
+        except (requests.Timeout, requests.ConnectionError) as e:
+            self._failed(f"{method} {path}: {e.__class__.__name__}")
+            raise WordPressError(f"{method} {path}: sito non raggiungibile ({e.__class__.__name__})") from e
+        finally:
+            self._last = time.monotonic()
+        if r.status_code >= 500 or r.status_code == 429:
+            self._failed(f"{method} {path}: HTTP {r.status_code}")
+            raise WordPressError(f"{method} {path} -> {r.status_code}")
+        self.failures = 0
         if r.status_code >= 400:
             raise WordPressError(f"{method} {path} -> {r.status_code}: {r.text[:400]}")
         return r.json() if r.content else {}
+
+    def _failed(self, what: str) -> None:
+        self.failures += 1
+        log.warning("WordPress non risponde (%d/%d): %s", self.failures, self.st.wp_max_failures, what)
+        if self.failures >= self.st.wp_max_failures:
+            raise SiteDownError(f"il sito non risponde ({what}): giro interrotto per non sovraccaricarlo")
 
     def check(self) -> None:
         """Verifica credenziali e presenza di The Events Calendar."""
         me = self._req("GET", "/wp/v2/users/me", params={"context": "edit"})
         log.info("WordPress: autenticato come %s", me.get("name"))
-        root = self._req("GET", "/")
-        if "tribe/events/v1" not in root.get("namespaces", []):
-            raise WordPressError("API di The Events Calendar non trovata (namespace tribe/events/v1)")
+        try:
+            self._req("GET", "/tribe/events/v1/categories", params={"per_page": 1})
+        except SiteDownError:
+            raise
+        except WordPressError as e:
+            raise WordPressError("API di The Events Calendar non trovata: il plugin è attivo?") from e
 
     # ------------------------------------------------------------------ media
     def upload_media(self, data: bytes, filename: str, mime: str, title: str, alt: str, caption: str = "") -> int:

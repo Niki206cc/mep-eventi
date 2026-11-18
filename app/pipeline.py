@@ -19,7 +19,7 @@ from .notify import esc, telegram
 from .sources import build_source
 from .state import LIVE
 from .store import FINAL, Store
-from .wordpress import WordPress, norm, similar
+from .wordpress import SiteDownError, WordPress, norm, similar
 
 log = logging.getLogger(__name__)
 
@@ -195,10 +195,16 @@ class Pipeline:
                         if self.process(raw, today):
                             new_count += 1
                             stats["nuovi"] += 1
+                    except SiteDownError:
+                        raise
                     except Exception as e:  # noqa: BLE001
                         log.exception("errore su %s", raw.url)
                         stats["errori"] += 1
                         self._fail(raw, e)
+        except SiteDownError as e:
+            status = "interrotto"
+            log.error("%s", e)
+            self.report.errors.append(f"Giro interrotto: {e}"[:400])
         except Exception as e:  # noqa: BLE001
             status = "fallito"
             self.report.errors.append(f"Giro interrotto: {e}"[:400])

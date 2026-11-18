@@ -304,3 +304,23 @@ def test_web_endpoints(st, tmp_path, monkeypatch):
     req = urllib.request.Request(base + "/api/run", data=b'{"source":"clusone","dry":true}', headers=auth | {"Content-Type": "application/json"}, method="POST")
     assert json.loads(urllib.request.urlopen(req).read())["started"] and calls == [("clusone", True)]
     srv.shutdown()
+
+
+def test_wordpress_circuit_breaker(st, monkeypatch):
+    import requests as rq
+    from app.store import Store
+    from app.wordpress import SiteDownError, WordPress, WordPressError
+    st.wp_request_delay = 0
+    wp = WordPress(st, Store(st.data_dir))
+    calls = []
+    def boom(*a, **k):
+        calls.append(1)
+        raise rq.Timeout("lento")
+    monkeypatch.setattr(wp.s, "request", boom)
+    with pytest.raises(WordPressError):
+        wp._req("GET", "/x")
+    with pytest.raises(WordPressError):
+        wp._req("GET", "/x")
+    with pytest.raises(SiteDownError):
+        wp._req("GET", "/x")
+    assert len(calls) == 3

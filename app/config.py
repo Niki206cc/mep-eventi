@@ -53,6 +53,9 @@ class Settings:
     wp_url: str = field(default_factory=lambda: os.getenv("WP_URL", "https://www.montagneepaesi.com").rstrip("/"))
     wp_user: str = field(default_factory=lambda: os.getenv("WP_USER", ""))
     wp_app_password: str = field(default_factory=lambda: os.getenv("WP_APP_PASSWORD", ""))
+    wp_request_delay: float = field(default_factory=lambda: float(os.getenv("WP_REQUEST_DELAY", "3")))
+    wp_timeout: int = field(default_factory=lambda: _int("WP_TIMEOUT", 40))
+    wp_max_failures: int = field(default_factory=lambda: _int("WP_MAX_FAILURES", 3))
     publish_status: str = field(default_factory=lambda: os.getenv("PUBLISH_STATUS", "draft"))  # draft | pending | publish
     add_source_link: bool = field(default_factory=lambda: _bool("ADD_SOURCE_LINK", True))
     categories: list[str] = field(default_factory=lambda: _list("EVENT_CATEGORIES", DEFAULT_CATEGORIES))
@@ -72,14 +75,14 @@ class Settings:
     max_occurrences: int = field(default_factory=lambda: _int("MAX_OCCURRENCES", 8))
     skip_recurring: bool = field(default_factory=lambda: _bool("SKIP_RECURRING", True))
     max_period_days: int = field(default_factory=lambda: _int("MAX_PERIOD_DAYS", 120))
-    max_new_per_run: int = field(default_factory=lambda: _int("MAX_NEW_PER_RUN", 40))
+    max_new_per_run: int = field(default_factory=lambda: _int("MAX_NEW_PER_RUN", 15))
     min_image_side: int = field(default_factory=lambda: _int("MIN_IMAGE_SIDE", 300))
     check_existing_on_site: bool = field(default_factory=lambda: _bool("CHECK_EXISTING_ON_SITE", True))
 
     # Esecuzione
     timezone: str = field(default_factory=lambda: os.getenv("TZ", "Europe/Rome"))
     run_at: list[str] = field(default_factory=lambda: _list("RUN_AT", ["05:30"]))
-    run_on_start: bool = field(default_factory=lambda: _bool("RUN_ON_START", True))
+    run_on_start: bool = field(default_factory=lambda: _bool("RUN_ON_START", False))
     data_dir: Path = field(default_factory=lambda: Path(os.getenv("DATA_DIR", "/data")))
     sources_file: Path = field(default_factory=lambda: Path(os.getenv("SOURCES_FILE", str(Path(__file__).resolve().parent.parent / "config" / "sources.yaml"))))
     user_agent: str = field(default_factory=lambda: os.getenv(
