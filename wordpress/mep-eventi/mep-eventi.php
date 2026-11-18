@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       MEP Eventi – Prossimi eventi e segnalazioni
  * Description:       Box "Prossimi eventi" leggero per la home ([mep_prossimi_eventi]) e modulo pubblico per segnalare eventi ([mep_segnala_evento]) che crea bozze in The Events Calendar.
- * Version:           1.0.2
+ * Version:           1.0.3
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Montagne & Paesi
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'MEP_EVENTI_VERSION', '1.0.2' );
+define( 'MEP_EVENTI_VERSION', '1.0.3' );
 define( 'MEP_EVENTI_OPT', 'mep_eventi_settings' );
 
 /* -------------------------------------------------------------------------
@@ -95,6 +95,36 @@ function mep_eventi_settings_page() {
 		</form>
 	</div>
 	<?php
+}
+
+/* -------------------------------------------------------------------------
+ * robots.txt: limita i bot che consumano risorse senza portare lettori
+ * (disattivabile con: add_filter( 'mep_eventi_robots_rules', '__return_empty_string' ); )
+ * ---------------------------------------------------------------------- */
+
+add_filter( 'robots_txt', 'mep_eventi_robots_txt', 99, 2 );
+
+function mep_eventi_robots_txt( $output, $public ) {
+	if ( ! $public ) {
+		return $output;
+	}
+	$blocked = array(
+		// addestramento IA (non portano visite)
+		'GPTBot', 'ClaudeBot', 'anthropic-ai', 'CCBot', 'Bytespider', 'Amazonbot', 'meta-externalagent',
+		'Google-Extended', 'Applebot-Extended', 'PerplexityBot', 'cohere-ai', 'Diffbot',
+		// SEO / monitoraggio commerciali
+		'AhrefsBot', 'SemrushBot', 'MJ12bot', 'DotBot', 'BLEXBot', 'DataForSeoBot', 'trendictionbot', 'tphotobot',
+		// motori non rilevanti per un sito locale italiano
+		'Baiduspider', 'YandexBot', 'PetalBot', 'Sogou',
+	);
+	$rules  = "\n# --- MEP: bot bloccati per alleggerire il server ---\n";
+	foreach ( $blocked as $bot ) {
+		$rules .= "User-agent: {$bot}\nDisallow: /\n\n";
+	}
+	$rules .= "# --- MEP: pagine pesanti e senza valore per i motori ---\n";
+	$rules .= "User-agent: *\nDisallow: /*?print=\nDisallow: /*&print=\nDisallow: /*?noamp=\nDisallow: /wp-json/oembed/\nDisallow: /*?p=\nDisallow: /?s=\n";
+	$rules = apply_filters( 'mep_eventi_robots_rules', $rules );
+	return $output . $rules;
 }
 
 /* -------------------------------------------------------------------------
