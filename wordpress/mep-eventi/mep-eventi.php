@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       MEP Eventi – Prossimi eventi e segnalazioni
  * Description:       Box "Prossimi eventi" leggero per la home ([mep_prossimi_eventi]) e modulo pubblico per segnalare eventi ([mep_segnala_evento]) che crea bozze in The Events Calendar.
- * Version:           1.0.0
+ * Version:           1.0.1
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Montagne & Paesi
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'MEP_EVENTI_VERSION', '1.0.0' );
+define( 'MEP_EVENTI_VERSION', '1.0.1' );
 define( 'MEP_EVENTI_OPT', 'mep_eventi_settings' );
 
 /* -------------------------------------------------------------------------
@@ -129,6 +129,7 @@ function mep_eventi_css() {
 .mep-ev__actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:1em}
 .mep-ev__btn{display:inline-block;padding:.55em 1em;border-radius:8px;border:1px solid var(--mep-accent);color:var(--mep-accent);text-decoration:none;font-weight:600}
 .mep-ev__btn--primary{background:var(--mep-accent);color:#fff}
+@media (max-width:767px){.mep-ev__grid{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:12px;padding-bottom:8px;-webkit-overflow-scrolling:touch}.mep-ev__card{flex:0 0 72%;scroll-snap-align:start}.mep-ev__title{font-size:1.25em}}
 .mep-form{max-width:760px}
 .mep-form fieldset{border:1px solid rgba(0,0,0,.12);border-radius:10px;padding:14px 16px;margin:0 0 16px}
 .mep-form legend{font-weight:700;padding:0 6px}
