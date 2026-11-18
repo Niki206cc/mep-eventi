@@ -6,12 +6,14 @@ from ..http import Http
 from ..models import RawEvent
 from .html_generic import HtmlSource
 from .municipium import MunicipiumSource
+from .wp_rest import WpRestSource
 from .wp_valseriana import ValserianaSource
 
 REGISTRY = {
     "html": HtmlSource,
     "municipium": MunicipiumSource,
     "wp_valseriana": ValserianaSource,
+    "wp_rest": WpRestSource,
 }
 
 

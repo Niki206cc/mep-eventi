@@ -4,6 +4,7 @@
 # Tipi disponibili:
 #   wp_valseriana  -> API REST di valseriana.eu (Promoserio)
 #   municipium     -> comuni su piattaforma Municipium (API JSON pubblica)
+#   wp_rest        -> qualsiasi WordPress che espone un post type eventi in REST
 #   html           -> qualsiasi sito: legge le pagine elenco, segue i link che
 #                     corrispondono a link_pattern e fa estrarre i dati all'IA
 #
@@ -88,3 +89,94 @@ sources:
     comune: Songavazzo
     zona: "Val Seriana"
     provincia: BG
+
+  # ---------------- Val Seriana: altri comuni Municipium
+
+  - id: nembro
+    type: municipium
+    enabled: true
+    name: "Comune di Nembro"
+    api: https://nembro-api.municipiumapp.it
+    comune: "Nembro"
+    zona: "Val Seriana"
+    provincia: BG
+
+  - id: albino
+    type: municipium
+    enabled: true
+    name: "Comune di Albino"
+    api: https://albino-api.municipiumapp.it
+    comune: "Albino"
+    zona: "Val Seriana"
+    provincia: BG
+
+  - id: gandino
+    type: municipium
+    enabled: true
+    name: "Comune di Gandino"
+    api: https://gandino-api.municipiumapp.it
+    comune: "Gandino"
+    zona: "Val Gandino"
+    provincia: BG
+
+  - id: leffe
+    type: municipium
+    enabled: true
+    name: "Comune di Leffe"
+    api: https://leffe-api.municipiumapp.it
+    comune: "Leffe"
+    zona: "Val Gandino"
+    provincia: BG
+
+  - id: ranica
+    type: municipium
+    enabled: true
+    name: "Comune di Ranica"
+    api: https://ranica-api.municipiumapp.it
+    comune: "Ranica"
+    zona: "Val Seriana"
+    provincia: BG
+
+  - id: valbondione
+    type: municipium
+    enabled: true
+    name: "Comune di Valbondione"
+    api: https://valbondione-api.municipiumapp.it
+    comune: "Valbondione"
+    zona: "Val Seriana"
+    provincia: BG
+
+  - id: cene
+    type: municipium
+    enabled: true
+    name: "Comune di Cene"
+    api: https://cene-api.municipiumapp.it
+    comune: "Cene"
+    zona: "Val Seriana"
+    provincia: BG
+
+  # ---------------- Valle Camonica
+  - id: turismovallecamonica
+    type: wp_rest
+    enabled: true
+    name: "Turismo Valle Camonica"
+    base_url: https://www.turismovallecamonica.it
+    rest_base: eventi
+    modified_days: 90        # solo schede modificate negli ultimi 90 giorni
+    max_pages: 2
+    place_taxonomy: localita
+    category_taxonomies: [tipologie, categorie_eventi]
+    zona: "Valle Camonica"
+    provincia: BS
+
+  # ---------------- Lago d'Iseo / Alto Sebino
+  - id: visitlakeiseo
+    type: html
+    enabled: true
+    name: "Visit Lake Iseo"
+    listing_urls:
+      - https://visitlakeiseo.info/eventi/
+    link_pattern: 'visitlakeiseo\.info/eventi/[a-z0-9\-]+/?$'
+    exclude_pattern: '/eventi/page/|/eventi/?$'
+    max_links: 80
+    zona: "Lago d'Iseo"

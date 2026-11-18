@@ -325,3 +325,16 @@ def test_wordpress_circuit_breaker(st, monkeypatch):
     with pytest.raises(SiteDownError):
         wp._req("GET", "/x")
     assert len(calls) == 3
+
+
+def test_wp_rest_source():
+    from app.sources.wp_rest import WpRestSource
+    post = {"id": 7, "link": "https://www.turismovallecamonica.it/eventi/notturna/", "title": {"rendered": "Notturna"},
+            "content": {"rendered": "<p>21 novembre 2026</p>"},
+            "_embedded": {"wp:featuredmedia": [{"source_url": "https://x/i.jpg"}],
+                          "wp:term": [[{"taxonomy": "localita", "name": "Montecampione"}], [{"taxonomy": "tipologie", "name": "Natura"}]]}}
+    http = FakeHttp({"/wp-json/wp/v2/eventi": [post]})
+    raws = WpRestSource({"id": "tvc", "base_url": "https://www.turismovallecamonica.it", "place_taxonomy": "localita",
+                         "category_taxonomies": ["tipologie"], "zona": "Valle Camonica"}, http, TODAY).fetch()
+    assert raws[0].hints["comune"] == "Montecampione" and raws[0].hints["categorie_fonte"] == ["Natura"]
+    assert raws[0].image_urls == ["https://x/i.jpg"] and raws[0].needs_page_fetch
