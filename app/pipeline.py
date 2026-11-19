@@ -328,7 +328,7 @@ class Pipeline:
         if start_hint and start_hint > today + timedelta(days=self.st.horizon_days):
             return self._skip(raw, "out_of_horizon")
 
-        if self.st.llm_max_calls and self.llm.calls >= self.st.llm_max_calls:
+        if not self.llm.batch and self.st.llm_max_calls and self.llm.calls >= self.st.llm_max_calls:
             raise LLMBudgetReached()
 
         # locandina: immagini candidate + eventuale PDF

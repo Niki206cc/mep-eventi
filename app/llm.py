@@ -118,6 +118,8 @@ class LLM:
         if self.batch:
             if self.store.llm_is_pending(key) or any(k == key for _, k, _ in self.queue):
                 raise Deferred()
+            if self.st.llm_max_calls and len(self.queue) >= self.st.llm_max_calls:
+                raise Deferred()   # tetto del giro raggiunto: questa scheda va al prossimo giro
             cid = hashlib.sha1(key.encode()).hexdigest()[:40]
             self.queue.append((cid, key, self._anthropic_params(system, user, img)))
             self.calls += 1

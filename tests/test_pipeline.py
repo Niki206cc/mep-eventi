@@ -419,3 +419,20 @@ def test_batch_mode_queues_then_uses_cached_result(st, monkeypatch):
     assert not llm.queue
     store.llm_cache_put(key, '{"is_event": true, "title": "Sagra"}')
     assert llm.analyze(raw, TODAY, None)["title"] == "Sagra"
+
+
+def test_batch_cap_does_not_block_cached(st, monkeypatch):
+    import pytest
+    from app.llm import LLM, Deferred
+    from app.models import RawEvent
+    from app.store import Store
+    monkeypatch.setattr(st, "llm_max_calls", 1)
+    store = Store(st.data_dir)
+    llm = LLM(st, store, batch=True)
+    mk = lambda i: RawEvent(source_id="s", source_name="S", uid=str(i), url="u", title=f"E{i}", text="t")
+    for i in (1, 2):
+        with pytest.raises(Deferred):
+            llm.analyze(mk(i), TODAY, None)
+    assert len(llm.queue) == 1                      # il secondo non entra: tetto raggiunto
+    store.llm_cache_put("s|3|E3", '{"is_event": true}')
+    assert llm.analyze(mk(3), TODAY, None)["is_event"]   # i risultati già pronti si usano comunque
