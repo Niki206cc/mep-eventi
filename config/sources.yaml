@@ -190,6 +190,17 @@ sources:
     max_links: 80
     zona: "Lago d'Iseo"
 
+  # Le schede dei singoli eventi sono su bergamoavvenimenti.it (rimandano a Eppen / L'Eco di Bergamo)
+  - id: cinqueterrevalgandino
+    type: html
+    enabled: true
+    name: "Le Cinque Terre della Val Gandino"
+    listing_urls:
+      - https://www.lecinqueterredellavalgandino.it/eventi/
+    link_pattern: 'bergamoavvenimenti\.it/calendario/event/\d+/[^/?#]+/?$'
+    max_links: 60
+    zona: "Val Gandino"
+
   # ---------------- Altri comuni Municipium (Sebino, Val Brembana, Valtellina)
   - id: sarnico
     type: municipium
