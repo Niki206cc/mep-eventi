@@ -23,7 +23,9 @@ a volte con l'immagine della locandina. Devi:
 1) capire se è davvero un evento aperto al pubblico (concerto, sagra, mostra, incontro, gara, visita guidata, \
 corso, spettacolo...). NON sono eventi: avvisi amministrativi, bandi, chiusure di uffici, lavori stradali, \
 allerte meteo, notizie generiche senza una data di svolgimento;
-2) estrarre i dati in modo preciso, senza inventare nulla: se un dato manca lascia null;
+2) estrarre i dati in modo preciso, senza inventare nulla: se un dato manca lascia null. \
+Cerca con cura l'email dell'organizzatore o del contatto per informazioni/prenotazioni (nel testo, nei \
+dati della scheda o sulla locandina) e mettila in organizer.email; mai inventarla o ricostruirla;
 3) scrivere una descrizione ORIGINALE (non copiare frasi dalla fonte) in italiano, tono giornalistico \
 caldo e chiaro, 120-250 parole, in HTML semplice: <p>, <strong>, <ul><li> per programmi o orari. \
 Chiudi con un breve elenco "Info utili" (quando, dove, costo, contatti/prenotazioni se presenti). \

@@ -44,6 +44,10 @@ CREATE TABLE IF NOT EXISTS runs (
     per_source TEXT DEFAULT '{}',
     report TEXT
 );
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
 CREATE TABLE IF NOT EXISTS llm_cache (
     key TEXT PRIMARY KEY,
     result TEXT,
@@ -82,9 +86,11 @@ class Store:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.executescript(SCHEMA)
         cols = {r["name"] for r in self.db.execute("PRAGMA table_info(items)")}
-        for col in ("event_date", "city", "source_name", "image_url"):
+        for col in ("event_date", "city", "source_name", "image_url", "created_at", "org_email", "event_url", "mail_sent"):
             if col not in cols:
                 self.db.execute(f"ALTER TABLE items ADD COLUMN {col} TEXT")
+        if "created_at" not in cols:
+            self.db.execute("UPDATE items SET created_at=last_seen WHERE status IN ('created','updated')")
         self.db.commit()
 
     def get(self, source_id: str, uid: str) -> sqlite3.Row | None:
@@ -231,3 +237,40 @@ class Store:
         self.db.execute("DELETE FROM llm_pending WHERE batch_id=?", (batch_id,))
         self.db.execute("DELETE FROM llm_cache WHERE created < datetime('now','-30 days')")
         self.db.commit()
+
+    # --- impostazioni modificabili dalla dashboard
+    def setting(self, key: str, default: str | None = None) -> str | None:
+        r = self.db.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+        return r["value"] if r and r["value"] is not None else default
+
+    def settings(self) -> dict:
+        return {r["key"]: r["value"] for r in self.db.execute("SELECT key, value FROM settings")}
+
+    def set_settings(self, values: dict) -> None:
+        self.db.executemany("INSERT OR REPLACE INTO settings VALUES (?,?)",
+                            [(k, None if v is None else str(v)) for k, v in values.items()])
+        self.db.commit()
+
+    # --- pulizia: sul Raspberry resta solo il registro minimo anti-duplicati
+    def llm_cache_drop(self, key: str) -> None:
+        self.db.execute("DELETE FROM llm_cache WHERE key=?", (key,))
+        self.db.commit()
+
+    def purge(self, keep_past_days: int = 60) -> dict:
+        """Elimina il registro degli eventi conclusi da tempo, i vecchi giri e le analisi IA non più utili."""
+        cur = self.db.cursor()
+        out = {}
+        out["eventi_passati"] = cur.execute(
+            "DELETE FROM items WHERE event_date IS NOT NULL AND event_date < date('now', ?)",
+            (f"-{keep_past_days} days",)).rowcount
+        out["scartati_vecchi"] = cur.execute(
+            "DELETE FROM items WHERE event_date IS NULL AND status NOT IN ('created','updated') "
+            "AND last_seen < datetime('now','-180 days')").rowcount
+        out["impronte"] = cur.execute("DELETE FROM fingerprints WHERE day < date('now','-30 days')").rowcount
+        out["giri"] = cur.execute("DELETE FROM runs WHERE started < datetime('now','-90 days')").rowcount
+        out["analisi_ia"] = cur.execute("DELETE FROM llm_cache WHERE created < datetime('now','-30 days')").rowcount
+        cur.execute("UPDATE items SET note=NULL WHERE status IN ('created','updated') AND note=''")
+        self.db.commit()
+        if sum(out.values()) > 200:
+            self.db.execute("VACUUM")
+        return out

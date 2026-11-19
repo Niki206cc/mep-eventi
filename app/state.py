@@ -7,6 +7,8 @@ from collections import deque
 from datetime import datetime
 
 RUN_LOCK = threading.Lock()
+STOP = threading.Event()        # richiesta di fermare il giro in corso (dashboard)
+CONTINUOUS = threading.Event()  # scansione continua attiva
 
 
 class Live:

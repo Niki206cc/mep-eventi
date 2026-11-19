@@ -21,6 +21,12 @@ button,select,input{font:inherit;color:inherit}
 button{border:1px solid var(--line);background:var(--card);padding:7px 12px;border-radius:8px;cursor:pointer}
 button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
 button:disabled{opacity:.5;cursor:default}
+button.danger{border-color:var(--err);color:var(--err)}
+button.on{background:var(--ok);border-color:var(--ok);color:#fff;font-weight:600}
+form.set{display:grid;grid-template-columns:220px 1fr;gap:8px 14px;align-items:center;max-width:820px}
+form.set h3{grid-column:1/-1;margin:14px 0 2px;font-size:14px}
+form.set input[type=text],form.set input[type=password],form.set input[type=number],form.set select{width:100%}
+.switch{display:inline-flex;gap:8px;align-items:center;font-weight:600}
 select,input{border:1px solid var(--line);background:var(--card);padding:6px 9px;border-radius:8px}
 main{max-width:1280px;margin:0 auto;padding:20px 24px 60px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:18px}
@@ -67,6 +73,8 @@ dl{display:grid;grid-template-columns:200px 1fr;gap:6px 14px;margin:0}dt{color:v
   <select id="runSource"><option value="">Tutte le fonti</option></select>
   <button id="btnDry" title="Legge e analizza senza scrivere sul sito">Prova</button>
   <button id="btnRun" class="primary">Esegui ora</button>
+  <button id="btnCont" title="Ripete i giri su tutte le fonti finché non la fermi">Scansione continua: OFF</button>
+  <button id="btnStop" class="danger" title="Ferma il giro in corso e la scansione continua">Ferma</button>
 </header>
 <main>
   <section class="grid">
@@ -99,7 +107,7 @@ dl{display:grid;grid-template-columns:200px 1fr;gap:6px 14px;margin:0}dt{color:v
       <input id="fQ" placeholder="Cerca titolo, nota, URL…" size="28">
       <span class="muted small" id="nItems"></span>
     </div>
-    <table><thead><tr><th>Data</th><th>Evento</th><th>Comune</th><th>Fonte</th><th>Stato</th><th>Note</th><th></th></tr></thead>
+    <table><thead><tr><th>Data</th><th>Evento</th><th>Comune</th><th>Fonte</th><th>Stato</th><th>Note</th><th></th><th>Inserito</th></tr></thead>
       <tbody id="items"></tbody></table>
   </section>
 
@@ -120,6 +128,30 @@ dl{display:grid;grid-template-columns:200px 1fr;gap:6px 14px;margin:0}dt{color:v
   </section>
 
   <section id="tab-impostazioni" class="hidden">
+    <div class="card" style="margin-bottom:14px">
+      <form class="set" id="setForm" autocomplete="off">
+        <h3>Scansione continua</h3>
+        <label>Pausa tra un giro e l'altro (minuti)</label><input type="number" name="continuous_pause_min" min="5" max="600">
+        <h3>Email all'organizzatore</h3>
+        <label>Invio automatico</label><span class="switch"><input type="checkbox" id="mailOn"> <span id="mailOnL">disattivato</span></span>
+        <label>Server SMTP</label><input type="text" name="smtp_host" placeholder="es. ssl0.ovh.net">
+        <label>Porta</label><input type="number" name="smtp_port">
+        <label>Sicurezza</label><select name="smtp_security"><option value="ssl">SSL (465)</option><option value="starttls">STARTTLS (587)</option></select>
+        <label>Utente SMTP</label><input type="text" name="smtp_user">
+        <label>Password SMTP</label><input type="password" name="smtp_password" placeholder="lascia vuoto per non cambiarla">
+        <label>Mittente</label><input type="text" name="mail_from">
+        <label>Nome mittente</label><input type="text" name="mail_from_name">
+        <label>Copia nascosta (facoltativa)</label><input type="text" name="mail_bcc" placeholder="es. per ricevere una copia di ogni mail">
+        <h3>Link social nella mail</h3>
+        <label>Facebook</label><input type="text" name="social_facebook">
+        <label>Instagram</label><input type="text" name="social_instagram">
+        <label>WhatsApp</label><input type="text" name="social_whatsapp">
+        <label>Telegram</label><input type="text" name="social_telegram">
+        <label>Sito</label><input type="text" name="social_site">
+        <span></span><div class="tools" style="margin:6px 0 0"><button type="submit" class="primary">Salva</button>
+          <input type="text" id="testTo" placeholder="email per la prova" size="24"><button type="button" id="btnTest">Invia mail di prova</button></div>
+      </form>
+    </div>
     <div class="card"><dl id="cfg"></dl>
       <p class="muted small">Le impostazioni si cambiano dalle variabili dello stack in Portainer; le fonti da <code>config/sources.yaml</code> su GitHub.</p></div>
   </section>
@@ -136,6 +168,8 @@ const badge = s => { const c = ["created","updated","ok"].includes(s) ? "b-"+s :
   : ["duplicate","retry","con errori"].includes(s) ? "b-con" : s==="running" ? "b-running" : "b-other";
   return `<span class="b ${c}">${esc(LABEL[s]||s)}</span>`; };
 const fmtDT = s => s ? new Date(s).toLocaleString("it-IT",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}) : "–";
+const fmtDT2 = s => { if(!s) return "–"; const d=new Date(s); if(isNaN(d)) return s; const p=n=>String(n).padStart(2,"0");
+  return `${p(d.getDate())}/${p(d.getMonth()+1)}/${String(d.getFullYear()).slice(2)} ${p(d.getHours())}:${p(d.getMinutes())}`; };
 const fmtD = s => s ? new Date(s+"T12:00").toLocaleDateString("it-IT",{weekday:"short",day:"2-digit",month:"short"}) : "–";
 const dur = (a,b) => { if(!a||!b) return "–"; const s=(new Date(b)-new Date(a))/1000; return s<60? Math.round(s)+" s" : Math.round(s/60)+" min"; };
 let STATUS = null, logSeq = 0, logLines = [];
@@ -149,6 +183,9 @@ async function loadStatus(){
   $("#pill").className = "pill" + (L.running ? " run" : "");
   $("#pill").textContent = L.running ? "Giro in corso" : "In attesa";
   $("#btnRun").disabled = $("#btnDry").disabled = L.running;
+  $("#btnStop").disabled = !L.running && !s.continuous;
+  $("#btnCont").textContent = "Scansione continua: " + (s.continuous ? "ON" : "OFF");
+  $("#btnCont").classList.toggle("on", !!s.continuous);
   $("#cState").textContent = L.running ? (L.source || "avvio…") : "Fermo";
   $("#cStateS").textContent = L.running ? `${L.done}/${L.total} · ${L.current||""}`.slice(0,90) : "";
   $("#prog").classList.toggle("hidden", !L.running);
@@ -166,7 +203,7 @@ async function loadStatus(){
     const el = $(sel); if (el.options.length <= 1) s.sources.forEach(x => el.add(new Option(x.name, x.id)));
   }
   $("#cfg").innerHTML = [["Sito",cfg.wp_url],["Stato eventi creati",cfg.publish_status],["Orari",cfg.run_at.join(", ")],["IA",cfg.llm],
-    ["Orizzonte",cfg.horizon_days+" giorni"],["Salta ricorrenti",cfg.skip_recurring?"sì":"no"],["Max nuovi per giro",cfg.max_new_per_run],
+    ["Orizzonte",cfg.horizon_days+" giorni"],["Salta ricorrenti",cfg.skip_recurring?"sì":"no"],["Max nuovi per giro",cfg.max_new_per_run||"nessun limite"],
     ["Telegram",cfg.telegram?"attivo":"non configurato"]].map(([k,v])=>`<dt>${k}</dt><dd>${esc(v)}</dd>`).join("");
   renderSources();
 }
@@ -181,9 +218,10 @@ async function loadItems(){
     return `<tr><td class="small">${fmtD(r.event_date)}</td>
       <td><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.title||r.url)}</a></td>
       <td class="small">${esc(r.city||"")}</td><td class="small muted">${esc(r.source_id)}</td>
-      <td>${badge(r.status)}</td><td class="note">${esc(r.note||"")}</td>
-      <td class="small">${links} ${r.status!=="created"&&r.status!=="updated"?`<button class="small" data-retry="${esc(r.source_id)}|${esc(r.uid)}">Riprova</button>`:""}</td></tr>`;
-  }).join("") || `<tr><td colspan="7" class="muted">Nessun elemento.</td></tr>`;
+      <td>${badge(r.status)}</td><td class="note">${esc(r.note||"")}${r.org_email?`<div>✉ ${esc(r.org_email)}${r.mail_sent?(String(r.mail_sent).startsWith("errore")?` – <span style="color:var(--err)">${esc(r.mail_sent)}</span>`:" – mail inviata "+fmtDT2(r.mail_sent)):""}</div>`:""}</td>
+      <td class="small">${links} ${r.status!=="created"&&r.status!=="updated"?`<button class="small" data-retry="${esc(r.source_id)}|${esc(r.uid)}">Riprova</button>`:""}${r.event_url?` · <a href="${esc(r.event_url)}" target="_blank">vedi</a>`:""}</td>
+      <td class="small" style="white-space:nowrap">${r.created_at?fmtDT2(r.created_at):"–"}</td></tr>`;
+  }).join("") || `<tr><td colspan="8" class="muted">Nessun elemento.</td></tr>`;
 }
 
 async function loadRuns(){
@@ -234,6 +272,23 @@ document.addEventListener("click", async e => {
   if (t.dataset.runsrc) run(t.dataset.runsrc, false);
 });
 $("#btnRun").onclick = () => run($("#runSource").value || null, false);
+const post = (p, body) => api(p,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body||{})});
+$("#btnCont").onclick = async () => { const on = !(STATUS && STATUS.continuous);
+  await post("api/continuous",{on}); toast(on ? "Scansione continua attivata: parte entro un minuto" : "Scansione continua disattivata (il giro in corso finisce)"); refresh(); };
+$("#btnStop").onclick = async () => { if(!confirm("Fermare il giro in corso e la scansione continua?")) return;
+  await post("api/stop"); toast("Mi fermo appena finito l'evento in lavorazione"); refresh(); };
+async function loadSettings(){
+  const c = await api("api/settings"); const f = $("#setForm");
+  for (const [k,v] of Object.entries(c)) { const el = f.elements[k]; if (el) el.value = v ?? ""; }
+  $("#mailOn").checked = c.mail_enabled === "1"; $("#mailOnL").textContent = $("#mailOn").checked ? "attivo" : "disattivato";
+}
+$("#mailOn").onchange = async () => { await post("api/settings",{mail_enabled: $("#mailOn").checked ? "1" : "0"});
+  $("#mailOnL").textContent = $("#mailOn").checked ? "attivo" : "disattivato"; toast($("#mailOn").checked ? "Invio mail attivato" : "Invio mail disattivato"); };
+$("#setForm").onsubmit = async e => { e.preventDefault(); const body = Object.fromEntries(new FormData(e.target));
+  await post("api/settings", body); toast("Impostazioni salvate"); loadSettings(); };
+$("#btnTest").onclick = async () => { try { await post("api/settings", Object.fromEntries(new FormData($("#setForm"))));
+  const r = await fetch("api/mail/test",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({to:$("#testTo").value})});
+  const j = await r.json(); toast(j.ok ? "Mail di prova inviata" : "Errore: " + (j.error||r.status)); } catch(e){ toast("Errore: "+e.message); } };
 $("#btnDry").onclick = () => run($("#runSource").value || null, true);
 ["#fStatus","#fSource"].forEach(s => $(s).onchange = loadItems);
 let qT; $("#fQ").oninput = () => { clearTimeout(qT); qT = setTimeout(loadItems, 300); };
@@ -249,6 +304,7 @@ async function refresh(){
   catch(e){ $("#pill").textContent = "Non raggiungibile"; }
 }
 show((location.hash||"#eventi").slice(1));
+loadSettings().catch(()=>{});
 refresh(); setInterval(refresh, 5000);
 </script>
 </body>

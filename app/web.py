@@ -11,7 +11,8 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from .config import Settings
-from .state import LIVE, RING, RUN_LOCK
+from .mailer import DEFAULTS as MAIL_DEFAULTS, build as build_mail, clean_email, conf as mail_conf, send as send_mail
+from .state import CONTINUOUS, LIVE, RING, RUN_LOCK, STOP
 from .store import Store
 
 log = logging.getLogger(__name__)
@@ -32,8 +33,12 @@ class App:
         sources = []
         for cfg in self.st.load_sources():
             sources.append({"id": cfg["id"], "name": cfg.get("name", cfg["id"]), "type": cfg.get("type")})
+        c = mail_conf(s)
         return {
             "live": LIVE.as_dict(),
+            "continuous": CONTINUOUS.is_set(),
+            "continuous_pause_min": c.get("continuous_pause_min"),
+            "mail_enabled": c.get("mail_enabled") == "1",
             "last_run": runs[0] if runs else None,
             "counts": s.counts(),
             "sources": sources,
@@ -51,6 +56,9 @@ def make_handler(app: App):
 
     class H(BaseHTTPRequestHandler):
         server_version = "MEP-Eventi"
+
+        def st_url(self):
+            return st.wp_url
 
         def log_message(self, fmt, *args):  # niente log di ogni richiesta
             pass
@@ -109,6 +117,10 @@ def make_handler(app: App):
                 if u.path == "/api/items":
                     return self._json(app.store().items(q.get("status") or None, q.get("source") or None,
                                                         q.get("q") or None, int(q.get("limit", 300))))
+                if u.path == "/api/settings":
+                    c = mail_conf(app.store())
+                    c["smtp_password"] = "********" if c.get("smtp_password") else ""
+                    return self._json({k: c.get(k) for k in MAIL_DEFAULTS})
                 if u.path == "/api/logs":
                     return self._json(RING.since(int(q.get("since", 0))))
                 if u.path == "/health":
@@ -127,6 +139,32 @@ def make_handler(app: App):
                 if u.path == "/api/run":
                     ok = app.start_run(data.get("source") or None, bool(data.get("dry")))
                     return self._json({"started": ok, "message": None if ok else "C'è già un giro in corso"})
+                if u.path == "/api/stop":
+                    CONTINUOUS.clear()
+                    app.store().set_settings({"continuous": "0"})
+                    STOP.set()
+                    return self._json({"ok": True})
+                if u.path == "/api/continuous":
+                    on = bool(data.get("on"))
+                    app.store().set_settings({"continuous": "1" if on else "0"})
+                    if on:
+                        CONTINUOUS.set()
+                    else:
+                        CONTINUOUS.clear()
+                    return self._json({"ok": True, "continuous": on})
+                if u.path == "/api/settings":
+                    vals = {k: str(v).strip() for k, v in data.items() if k in MAIL_DEFAULTS and v is not None}
+                    if vals.get("smtp_password") in ("", "********"):
+                        vals.pop("smtp_password", None)   # non cancellare la password se il campo resta mascherato
+                    app.store().set_settings(vals)
+                    return self._json({"ok": True})
+                if u.path == "/api/mail/test":
+                    to = clean_email(data.get("to"))
+                    if not to:
+                        return self._json({"ok": False, "error": "indirizzo non valido"}, 400)
+                    c = mail_conf(app.store())
+                    send_mail(c, build_mail(c, to, "Evento di prova", c.get("social_site") or self.st_url()))
+                    return self._json({"ok": True})
                 if u.path == "/api/items/retry":
                     app.store().reset_item(data["source_id"], data["uid"])
                     return self._json({"ok": True})

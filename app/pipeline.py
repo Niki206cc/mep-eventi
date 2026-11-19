@@ -18,8 +18,9 @@ from .llm import LLM
 from .models import RawEvent
 from .notify import esc, telegram
 from .sources import build_source
-from .state import LIVE
-from .llm import Deferred
+from .state import STOP, LIVE
+from .llm import Deferred, cache_key
+from .mailer import clean_email, notify_organizer
 from .store import FINAL, Store
 from .wordpress import SiteDownError, WordPress, norm, similar
 
@@ -182,11 +183,15 @@ class Pipeline:
         try:
             if self.wp:
                 self.wp.check()
+            if not self.dry and self.store.setting("last_purge") != today.isoformat():
+                purged = self.store.purge()
+                self.store.set_settings({"last_purge": today.isoformat()})
+                log.info("Pulizia registro: %s", purged)
             sources = [s for s in self.st.load_sources() if not only_source or s["id"] == only_source]
             new_count = 0
             stop = False
             for cfg in sources:
-                if stop:
+                if stop or STOP.is_set():
                     break
                 stats = per_source.setdefault(cfg["id"], {"trovati": 0, "nuovi": 0, "errori": 0})
                 LIVE.update(source=cfg.get("name", cfg["id"]), done=0, total=0, current="lettura fonte…")
@@ -202,6 +207,10 @@ class Pipeline:
                 stats["trovati"] = len(raws)
                 LIVE.update(total=len(todo))
                 for n, raw in enumerate(todo, 1):
+                    if STOP.is_set():
+                        self.report.notes.append("Giro fermato dalla dashboard.")
+                        stop = True
+                        break
                     if self.st.max_new_per_run and new_count >= self.st.max_new_per_run:
                         self.report.notes.append(f"Raggiunto il limite di {self.st.max_new_per_run} nuovi eventi: il resto al prossimo giro.")
                         stop = True
@@ -390,22 +399,40 @@ class Pipeline:
                             source_name=raw.source_name)
 
         created = []
+        first_url = None
         for s in todo:
             payload = self._payload(raw, data, s, media_id)
             ev = self.wp.create_event(payload)
             created.append(ev["id"])
+            first_url = first_url or ev.get("url")
             self.store.add_fingerprint(s.start_day.isoformat(), city, title, ev["id"], raw.source_id, raw.uid)
 
         self.store.save(raw.source_id, raw.uid, url=raw.url, title=title, status="created", wp_ids=created,
                         media_id=media_id, content_hash=h, attempts=0, note="", source_name=raw.source_name,
                         event_date=todo[0].start_day.isoformat(), city=city,
                         image_url=best.source_url if best else None)
+        self._after_create(raw, data, title, created, first_url)
         first = todo[0].start_day.strftime("%d/%m")
         extra = f" (+{len(created) - 1} date)" if len(created) > 1 else ""
         self.report.created.append(
             f"• <a href=\"{self.wp.edit_link(created[0])}\">{esc(title)}</a> – {first}{extra}, {esc(city)} <i>[{esc(raw.source_id)}]</i>")
         log.info("[%s] creato %s -> %s", raw.source_id, title, created)
         return True
+
+    def _after_create(self, raw: RawEvent, data: dict, title: str, created: list[int], url: str | None) -> None:
+        """Registro minimo + pulizia dell'analisi IA + eventuale mail all'organizzatore."""
+        org = data.get("organizer") or {}
+        email = clean_email(org.get("email")) if isinstance(org, dict) else None
+        fields = {"created_at": datetime.now().isoformat(timespec="seconds"), "org_email": email, "event_url": url}
+        self.store.llm_cache_drop(cache_key(raw))
+        if email and url and self.st.publish_status == "publish":
+            try:
+                if notify_organizer(self.store, email, title, url):
+                    fields["mail_sent"] = datetime.now().isoformat(timespec="seconds")
+            except Exception as e:  # noqa: BLE001
+                log.warning("email all'organizzatore non inviata (%s): %s", email, e)
+                fields["mail_sent"] = f"errore: {e}"[:200]
+        self.store.save(raw.source_id, raw.uid, **fields)
 
     # ------------------------------------------------------------------
     def _payload(self, raw: RawEvent, data: dict, slot: Slot, media_id: int | None) -> dict:

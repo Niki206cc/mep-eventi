@@ -5,12 +5,13 @@ import argparse
 import logging
 import sys
 import threading
+import time
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from .config import Settings
 from .pipeline import Pipeline
-from .state import LIVE, RING, RUN_LOCK
+from .state import CONTINUOUS, LIVE, RING, RUN_LOCK, STOP
 from .store import Store
 
 log = logging.getLogger("mep-eventi")
@@ -36,6 +37,7 @@ def run_once(st: Settings, dry: bool, source: str | None, limit: int | None, tri
         log.warning("giro già in corso: richiesta ignorata")
         return False
     try:
+        STOP.clear()
         Pipeline(st, dry_run=dry).run(only_source=source, limit=limit, trigger=trigger)
     except Exception:  # noqa: BLE001
         log.exception("esecuzione fallita")
@@ -85,7 +87,10 @@ def main(argv: list[str] | None = None) -> int:
         run_once(st, args.dry_run, args.source, args.limit, trigger="manuale (console)")
         return 0
 
-    Store(st.data_dir).mark_interrupted_runs()
+    store = Store(st.data_dir)
+    store.mark_interrupted_runs()
+    if store.setting("continuous") == "1":
+        CONTINUOUS.set()
     wake = threading.Event()
 
     def start_from_web(source: str | None, dry: bool) -> bool:
@@ -110,8 +115,17 @@ def main(argv: list[str] | None = None) -> int:
         nxt = next_run(datetime.now(tz), st.run_at)
         LIVE.update(next_run=nxt)
         log.info("Prossima esecuzione: %s", nxt.strftime("%d/%m/%Y %H:%M"))
+        last_lap = 0.0
         while (remaining := (nxt - datetime.now(tz)).total_seconds()) > 0:
-            wake.wait(min(remaining, 60))
+            wake.wait(min(remaining, 30))
+            if CONTINUOUS.is_set() and not RUN_LOCK.locked():
+                try:
+                    pause = int(store.setting("continuous_pause_min", "20") or 20) * 60
+                except ValueError:
+                    pause = 1200
+                if time.monotonic() - last_lap >= pause:
+                    run_once(st, False, None, None, trigger="scansione continua")
+                    last_lap = time.monotonic()
         run_once(st, False, args.source, args.limit)
 
 
