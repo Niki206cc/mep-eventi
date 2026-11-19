@@ -76,7 +76,7 @@ class Settings:
     max_occurrences: int = field(default_factory=lambda: _int("MAX_OCCURRENCES", 8))
     skip_recurring: bool = field(default_factory=lambda: _bool("SKIP_RECURRING", True))
     max_period_days: int = field(default_factory=lambda: _int("MAX_PERIOD_DAYS", 120))
-    max_new_per_run: int = field(default_factory=lambda: _int("MAX_NEW_PER_RUN", 15))
+    max_new_per_run: int = field(default_factory=lambda: _int("MAX_NEW_PER_RUN", 0))
     # risparmio crediti IA
     llm_max_calls: int = field(default_factory=lambda: _int("LLM_MAX_CALLS_PER_RUN", 40))
     llm_image_side: int = field(default_factory=lambda: _int("LLM_IMAGE_SIDE", 1000))

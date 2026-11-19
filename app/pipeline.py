@@ -200,7 +200,7 @@ class Pipeline:
                 stats["trovati"] = len(raws)
                 LIVE.update(total=len(todo))
                 for n, raw in enumerate(todo, 1):
-                    if new_count >= self.st.max_new_per_run:
+                    if self.st.max_new_per_run and new_count >= self.st.max_new_per_run:
                         self.report.notes.append(f"Raggiunto il limite di {self.st.max_new_per_run} nuovi eventi: il resto al prossimo giro.")
                         stop = True
                         break
@@ -302,7 +302,7 @@ class Pipeline:
         if start_hint and start_hint > today + timedelta(days=self.st.horizon_days):
             return self._skip(raw, "out_of_horizon")
 
-        if self.llm.calls >= self.st.llm_max_calls:
+        if self.st.llm_max_calls and self.llm.calls >= self.st.llm_max_calls:
             raise LLMBudgetReached()
 
         # locandina: immagini candidate + eventuale PDF
