@@ -86,7 +86,7 @@ class Store:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.executescript(SCHEMA)
         cols = {r["name"] for r in self.db.execute("PRAGMA table_info(items)")}
-        for col in ("event_date", "city", "source_name", "image_url", "created_at", "org_email", "event_url", "mail_sent"):
+        for col in ("event_date", "city", "source_name", "image_url", "created_at", "org_email", "event_url", "mail_sent", "mail_mode"):
             if col not in cols:
                 self.db.execute(f"ALTER TABLE items ADD COLUMN {col} TEXT")
         if "created_at" not in cols:
@@ -170,8 +170,14 @@ class Store:
         self.db.commit()
 
     def items(self, status: str | None = None, source: str | None = None, q: str | None = None,
-              limit: int = 300) -> list[dict]:
+              limit: int = 300, mail: str | None = None) -> list[dict]:
         sql, args = "SELECT * FROM items WHERE 1=1", []
+        if mail == "todo":
+            sql += " AND org_email IS NOT NULL AND (mail_sent IS NULL OR mail_sent LIKE 'errore%') AND status IN ('created','updated')"
+        elif mail == "sent":
+            sql += " AND mail_sent IS NOT NULL AND mail_sent NOT LIKE 'errore%'"
+        elif mail == "any":
+            sql += " AND org_email IS NOT NULL"
         if status:
             sql += " AND status=?"
             args.append(status)
@@ -179,8 +185,8 @@ class Store:
             sql += " AND source_id=?"
             args.append(source)
         if q:
-            sql += " AND (title LIKE ? OR url LIKE ? OR note LIKE ?)"
-            args += [f"%{q}%"] * 3
+            sql += " AND (title LIKE ? OR url LIKE ? OR note LIKE ? OR org_email LIKE ?)"
+            args += [f"%{q}%"] * 4
         sql += " ORDER BY last_seen DESC LIMIT ?"
         args.append(limit)
         out = []

@@ -51,6 +51,41 @@ class App:
         }
 
 
+def _send_item_mail(self, source_id: str, uid: str, to: str | None = None) -> dict:
+    """Invio manuale della mail all'organizzatore di un evento già pubblicato."""
+    from datetime import datetime
+
+    from .wordpress import WordPress
+    s = self.store()
+    row = s.get(source_id, uid)
+    if not row:
+        return {"ok": False, "error": "evento non trovato"}
+    email = clean_email(to or row["org_email"])
+    if not email:
+        return {"ok": False, "error": "nessuna email valida"}
+    url = row["event_url"]
+    ids = s.wp_ids(row)
+    if not url and ids:
+        try:
+            url = WordPress(self.st, s)._req("GET", f"/tribe/events/v1/events/{ids[0]}").get("url")
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "error": f"link evento non trovato ({e})"[:200]}
+    if not url:
+        return {"ok": False, "error": "l'evento non è sul sito"}
+    c = mail_conf(s)
+    try:
+        send_mail(c, build_mail(c, email, row["title"] or "il tuo evento", url))
+    except Exception as e:  # noqa: BLE001
+        s.save(source_id, uid, mail_sent=f"errore: {e}"[:200], mail_mode="manuale")
+        return {"ok": False, "error": str(e)[:200]}
+    now = datetime.now().isoformat(timespec="seconds")
+    s.save(source_id, uid, org_email=email, event_url=url, mail_sent=now, mail_mode="manuale")
+    return {"ok": True, "sent": now, "to": email}
+
+
+App.send_item_mail = _send_item_mail
+
+
 def make_handler(app: App):
     st = app.st
 
@@ -116,7 +151,8 @@ def make_handler(app: App):
                     return self._json(app.store().runs(int(q.get("limit", 30))))
                 if u.path == "/api/items":
                     return self._json(app.store().items(q.get("status") or None, q.get("source") or None,
-                                                        q.get("q") or None, int(q.get("limit", 300))))
+                                                        q.get("q") or None, int(q.get("limit", 300)),
+                                                        q.get("mail") or None))
                 if u.path == "/api/settings":
                     c = mail_conf(app.store())
                     c["smtp_password"] = "********" if c.get("smtp_password") else ""
@@ -165,6 +201,8 @@ def make_handler(app: App):
                     c = mail_conf(app.store())
                     send_mail(c, build_mail(c, to, "Evento di prova", c.get("social_site") or self.st_url()))
                     return self._json({"ok": True})
+                if u.path == "/api/items/mail":
+                    return self._json(app.send_item_mail(data["source_id"], data["uid"], data.get("to")))
                 if u.path == "/api/items/retry":
                     app.store().reset_item(data["source_id"], data["uid"])
                     return self._json({"ok": True})

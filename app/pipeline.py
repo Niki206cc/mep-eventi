@@ -429,6 +429,7 @@ class Pipeline:
             try:
                 if notify_organizer(self.store, email, title, url):
                     fields["mail_sent"] = datetime.now().isoformat(timespec="seconds")
+                    fields["mail_mode"] = "auto"
             except Exception as e:  # noqa: BLE001
                 log.warning("email all'organizzatore non inviata (%s): %s", email, e)
                 fields["mail_sent"] = f"errore: {e}"[:200]

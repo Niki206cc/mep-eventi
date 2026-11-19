@@ -52,7 +52,8 @@ td a{color:var(--accent)}
 .b-other{background:var(--line);color:var(--muted)}
 .b-running{background:#fff3d6;color:#8a5a00}
 .muted{color:var(--muted)}.small{font-size:12px}
-.note{max-width:340px;color:var(--muted);font-size:12px}
+.note{max-width:380px;color:var(--muted);font-size:12px}
+.mailrow{margin-top:4px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}.mailrow button{padding:3px 8px;font-size:12px}
 pre.log{background:#0f1311;color:#cfd8d3;padding:12px;border-radius:var(--radius);height:62vh;overflow:auto;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;margin:0;white-space:pre-wrap}
 .lv-ERROR{color:#ff8a7a}.lv-WARNING{color:#f4c06a}
 .report{white-space:pre-wrap;font-size:13px;background:var(--bg);padding:10px;border-radius:8px;margin-top:6px}
@@ -104,6 +105,8 @@ dl{display:grid;grid-template-columns:200px 1fr;gap:6px 14px;margin:0}dt{color:v
         <option value="out_of_horizon">Troppo lontani</option><option value="no_dates">Senza date</option><option value="too_long">Periodo troppo lungo</option>
       </select>
       <select id="fSource"><option value="">Tutte le fonti</option></select>
+      <select id="fMail"><option value="">Email: tutte</option><option value="any">Con email organizzatore</option>
+        <option value="todo">Email da inviare</option><option value="sent">Email già inviate</option></select>
       <input id="fQ" placeholder="Cerca titolo, nota, URL…" size="28">
       <span class="muted small" id="nItems"></span>
     </div>
@@ -208,8 +211,18 @@ async function loadStatus(){
   renderSources();
 }
 
+function mailCell(r){
+  const id = `${esc(r.source_id)}|${esc(r.uid)}`, sent = r.mail_sent && !String(r.mail_sent).startsWith("errore");
+  const err = r.mail_sent && String(r.mail_sent).startsWith("errore");
+  const pub = r.status==="created"||r.status==="updated";
+  let st = sent ? `<span class="b b-ok">✓ inviata ${r.mail_mode==="manuale"?"a mano":"in automatico"} ${fmtDT2(r.mail_sent)}</span>`
+         : err ? `<span class="b b-error" title="${esc(r.mail_sent)}">invio fallito</span>` : `<span class="b b-other">non inviata</span>`;
+  const btn = pub ? `<button class="small" data-mail="${id}" data-to="${esc(r.org_email)}" data-again="${sent?1:0}">${sent?"Reinvia":"Invia mail"}</button>` : "";
+  return `<div class="mailrow">✉ <a href="mailto:${esc(r.org_email)}">${esc(r.org_email)}</a> ${st} ${btn}</div>`;
+}
+
 async function loadItems(){
-  const p = new URLSearchParams({status:$("#fStatus").value, source:$("#fSource").value, q:$("#fQ").value});
+  const p = new URLSearchParams({status:$("#fStatus").value, source:$("#fSource").value, q:$("#fQ").value, mail:$("#fMail").value});
   const rows = await api("api/items?"+p);
   $("#nItems").textContent = rows.length + " elementi";
   const wp = STATUS ? STATUS.config.wp_url : "";
@@ -218,7 +231,7 @@ async function loadItems(){
     return `<tr><td class="small">${fmtD(r.event_date)}</td>
       <td><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.title||r.url)}</a></td>
       <td class="small">${esc(r.city||"")}</td><td class="small muted">${esc(r.source_id)}</td>
-      <td>${badge(r.status)}</td><td class="note">${esc(r.note||"")}${r.org_email?`<div>✉ ${esc(r.org_email)}${r.mail_sent?(String(r.mail_sent).startsWith("errore")?` – <span style="color:var(--err)">${esc(r.mail_sent)}</span>`:" – mail inviata "+fmtDT2(r.mail_sent)):""}</div>`:""}</td>
+      <td>${badge(r.status)}</td><td class="note">${esc(r.note||"")}${r.org_email?mailCell(r):""}</td>
       <td class="small">${links} ${r.status!=="created"&&r.status!=="updated"?`<button class="small" data-retry="${esc(r.source_id)}|${esc(r.uid)}">Riprova</button>`:""}${r.event_url?` · <a href="${esc(r.event_url)}" target="_blank">vedi</a>`:""}</td>
       <td class="small" style="white-space:nowrap">${r.created_at?fmtDT2(r.created_at):"–"}</td></tr>`;
   }).join("") || `<tr><td colspan="8" class="muted">Nessun elemento.</td></tr>`;
@@ -268,6 +281,12 @@ document.addEventListener("click", async e => {
   if (t.dataset.retry){ const [source_id, uid] = t.dataset.retry.split("|");
     await api("api/items/retry",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({source_id,uid})});
     toast("Verrà rielaborato al prossimo giro"); loadItems(); }
+  if (t.dataset.mail){
+    if (t.dataset.again==="1" && !confirm("La mail a "+t.dataset.to+" è già stata inviata. Reinviarla?")) return;
+    const [source_id, uid] = t.dataset.mail.split("|"); t.disabled = true; t.textContent = "Invio…";
+    try { const r = await post("api/items/mail",{source_id,uid});
+      toast(r.ok ? "Mail inviata a "+r.to : "Errore: "+r.error); } catch(err){ toast("Errore: "+err.message); }
+    loadItems(); }
   if (t.dataset.rep !== undefined) $("#rep"+t.dataset.rep).classList.toggle("hidden");
   if (t.dataset.runsrc) run(t.dataset.runsrc, false);
 });
@@ -290,7 +309,7 @@ $("#btnTest").onclick = async () => { try { await post("api/settings", Object.fr
   const r = await fetch("api/mail/test",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({to:$("#testTo").value})});
   const j = await r.json(); toast(j.ok ? "Mail di prova inviata" : "Errore: " + (j.error||r.status)); } catch(e){ toast("Errore: "+e.message); } };
 $("#btnDry").onclick = () => run($("#runSource").value || null, true);
-["#fStatus","#fSource"].forEach(s => $(s).onchange = loadItems);
+["#fStatus","#fSource","#fMail"].forEach(s => $(s).onchange = loadItems);
 let qT; $("#fQ").oninput = () => { clearTimeout(qT); qT = setTimeout(loadItems, 300); };
 $("#logErr").onchange = renderLog;
 
