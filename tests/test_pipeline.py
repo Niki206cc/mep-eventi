@@ -172,6 +172,7 @@ class FakeLLM:
         self.tokens_in = 0
         self.tokens_out = 0
         self.queue = []
+        self.batch = False
 
     def analyze(self, raw, today, picture, pdf_text=""):
         self.calls += 1
