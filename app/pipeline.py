@@ -19,6 +19,7 @@ from .models import RawEvent
 from .notify import esc, telegram
 from .sources import build_source
 from .state import LIVE
+from .llm import Deferred
 from .store import FINAL, Store
 from .wordpress import SiteDownError, WordPress, norm, similar
 
@@ -167,7 +168,8 @@ class Pipeline:
         self.tz = ZoneInfo(st.timezone)
         self.http = Http(st.user_agent, st.request_delay)
         self.store = Store(st.data_dir)
-        self.llm = LLM(st)
+        self.llm = LLM(st, self.store, batch=st.llm_batch and not dry_run)
+        self.deferred = 0
         self.wp = None if dry_run else WordPress(st, self.store)
         self.report = Report()
 
@@ -212,6 +214,9 @@ class Pipeline:
                             if self.st.event_pause and not self.dry:
                                 LIVE.update(current=f"pausa {self.st.event_pause}s (protezione sito)")
                                 time.sleep(self.st.event_pause)
+                    except Deferred:
+                        self.deferred += 1
+                        continue
                     except (SiteDownError, LLMBudgetReached):
                         raise
                     except Exception as e:  # noqa: BLE001
@@ -239,10 +244,22 @@ class Pipeline:
             LIVE.update(running=False, current="", source="")
             log.info("Fine: %d nuovi, %d aggiornati, scartati %s, errori %d",
                      len(self.report.created), len(self.report.updated), dict(self.report.skipped), len(self.report.errors))
+            if self.llm.queue and not self.dry:
+                try:
+                    self.llm.submit_batch()
+                    self.report.notes.append(f"In attesa dell'IA (differita, metà prezzo): {self.deferred} schede. "
+                                             "Gli eventi verranno creati appena pronte le analisi.")
+                except Exception as e:  # noqa: BLE001
+                    log.exception("invio batch IA fallito")
+                    self.report.errors.append(f"Invio analisi IA in differita fallito: {e}"[:300])
             cost = self.llm.tokens_in / 1e6 * self.st.price_in + self.llm.tokens_out / 1e6 * self.st.price_out
             log.info("IA: %d analisi, %d token in, %d token out, circa %.3f $", self.llm.calls,
                      self.llm.tokens_in, self.llm.tokens_out, cost)
-            self.report.notes.append(f"IA: {self.llm.calls} analisi, circa {cost:.2f} $")
+            if self.llm.batch:
+                if self.llm.calls:
+                    self.report.notes.append(f"IA: {self.llm.calls} analisi inviate in differita (metà prezzo)")
+            else:
+                self.report.notes.append(f"IA: {self.llm.calls} analisi, circa {cost:.2f} $")
         return self.report
 
     # ------------------------------------------------------------------

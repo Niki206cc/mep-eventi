@@ -171,6 +171,7 @@ class FakeLLM:
         self.calls = 0
         self.tokens_in = 0
         self.tokens_out = 0
+        self.queue = []
 
     def analyze(self, raw, today, picture, pdf_text=""):
         self.calls += 1
@@ -391,3 +392,29 @@ def test_consecutive_days_become_one_event():
     # evento già iniziato ma ancora in corso resta
     status, slots = plan_slots(data, date(2026, 12, 14), st)
     assert slots[0].start_day == date(2026, 12, 12)
+
+
+def test_batch_mode_queues_then_uses_cached_result(st, monkeypatch):
+    from app.llm import LLM, Deferred
+    from app.models import RawEvent
+    from app.store import Store
+    store = Store(st.data_dir)
+    llm = LLM(st, store, batch=True)
+    raw = RawEvent(source_id="s", source_name="S", uid="1", url="http://x", title="Sagra", text="testo",
+                   image_urls=[], pdf_urls=[], hints={})
+    import pytest
+    with pytest.raises(Deferred):
+        llm.analyze(raw, TODAY, None)
+    assert len(llm.queue) == 1
+    with pytest.raises(Deferred):          # non accoda due volte la stessa scheda
+        llm.analyze(raw, TODAY, None)
+    assert len(llm.queue) == 1
+    cid, key, params = llm.queue[0]
+    assert len(cid) <= 64 and params["model"] and params["messages"]
+    store.llm_add_batch("b1", [(cid, key)])
+    llm.queue.clear()
+    with pytest.raises(Deferred):          # in attesa: non riaccoda
+        llm.analyze(raw, TODAY, None)
+    assert not llm.queue
+    store.llm_cache_put(key, '{"is_event": true, "title": "Sagra"}')
+    assert llm.analyze(raw, TODAY, None)["title"] == "Sagra"

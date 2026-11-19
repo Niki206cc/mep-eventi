@@ -44,6 +44,25 @@ def run_once(st: Settings, dry: bool, source: str | None, limit: int | None, tri
     return True
 
 
+def batch_poller(st: Settings) -> None:
+    """Controlla le analisi IA in differita; quando sono pronte lancia un giro che crea gli eventi."""
+    import time
+
+    from .llm import LLM
+    llm = LLM(st, Store(st.data_dir), batch=True)
+    while True:
+        time.sleep(max(1, st.batch_poll_minutes) * 60)
+        try:
+            if not llm.store.llm_open_batches():
+                continue
+            if llm.collect_batches() > 0:
+                while RUN_LOCK.locked():
+                    time.sleep(60)
+                run_once(st, False, None, None, trigger="risultati IA")
+        except Exception:  # noqa: BLE001
+            log.exception("controllo analisi IA in differita fallito")
+
+
 def setup_logging(level: str) -> None:
     logging.basicConfig(level=level.upper(), stream=sys.stdout,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -79,6 +98,9 @@ def main(argv: list[str] | None = None) -> int:
     if st.web_enabled:
         from .web import serve
         serve(st, start_from_web)
+
+    if st.llm_batch:
+        threading.Thread(target=batch_poller, args=(st,), daemon=True, name="batch-poller").start()
 
     tz = ZoneInfo(st.timezone)
     log.info("Servizio avviato. Esecuzioni alle %s (%s)", ", ".join(st.run_at), st.timezone)

@@ -84,6 +84,8 @@ class Settings:
     update_changed: bool = field(default_factory=lambda: _bool("UPDATE_CHANGED", False))
     price_in: float = field(default_factory=lambda: float(os.getenv("LLM_PRICE_IN", "2")))     # $/milione token
     price_out: float = field(default_factory=lambda: float(os.getenv("LLM_PRICE_OUT", "10")))
+    llm_batch: bool = field(default_factory=lambda: _bool("LLM_BATCH", True))   # IA in differita, metà prezzo
+    batch_poll_minutes: int = field(default_factory=lambda: _int("BATCH_POLL_MINUTES", 10))
     recheck_days: int = field(default_factory=lambda: _int("RECHECK_DAYS", 14))
     min_image_side: int = field(default_factory=lambda: _int("MIN_IMAGE_SIDE", 300))
     check_existing_on_site: bool = field(default_factory=lambda: _bool("CHECK_EXISTING_ON_SITE", False))

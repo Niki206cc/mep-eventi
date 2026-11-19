@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import logging
 import re
@@ -83,17 +84,42 @@ def parse_json(text: str) -> dict:
         return json.loads(m.group(0))
 
 
+class Deferred(Exception):
+    """L'analisi è stata messa in coda per l'elaborazione in differita."""
+
+
+def cache_key(raw: RawEvent) -> str:
+    return f"{raw.source_id}|{raw.uid}|{(raw.title or '').strip()}"
+
+
 class LLM:
-    def __init__(self, st: Settings):
+    def __init__(self, st: Settings, store=None, batch: bool = False):
         self.st = st
+        self.store = store
+        self.batch = batch and st.llm_provider != "openai" and store is not None
+        self.queue: list[tuple[str, str, dict]] = []   # (custom_id, key, params)
         self.calls = 0
         self.tokens_in = 0
         self.tokens_out = 0
 
     def analyze(self, raw: RawEvent, today: date, picture: Picture | None, pdf_text: str = "") -> dict:
         system = SYSTEM_PROMPT.format(today=today.isoformat(), categories=", ".join(self.st.categories))
+        key = cache_key(raw)
+        if self.store is not None:
+            cached = self.store.llm_cached(key)
+            if cached:
+                data = parse_json(cached)
+                if isinstance(data, dict):
+                    return data
         user = build_user_prompt(raw, pdf_text, self.st.llm_text_chars)
         img = shrink_for_llm(picture, self.st.llm_image_side) if (picture and self.st.llm_vision) else None
+        if self.batch:
+            if self.store.llm_is_pending(key) or any(k == key for _, k, _ in self.queue):
+                raise Deferred()
+            cid = hashlib.sha1(key.encode()).hexdigest()[:40]
+            self.queue.append((cid, key, self._anthropic_params(system, user, img)))
+            self.calls += 1
+            raise Deferred()
         self.calls += 1
         if self.st.llm_provider == "openai":
             out = self._openai(system, user, img)
@@ -104,20 +130,80 @@ class LLM:
             raise ValueError("risposta IA non valida")
         return data
 
-    def _anthropic(self, system: str, user: str, img: Picture | None) -> str:
-        if not self.st.anthropic_api_key:
-            raise RuntimeError("ANTHROPIC_API_KEY mancante")
+    def _headers(self) -> dict:
+        return {"x-api-key": self.st.anthropic_api_key, "anthropic-version": "2023-06-01",
+                "content-type": "application/json"}
+
+    def _anthropic_params(self, system: str, user: str, img: Picture | None) -> dict:
         content: list[dict] = []
         if img:
             content.append({"type": "image", "source": {
                 "type": "base64", "media_type": img.mime, "data": base64.b64encode(img.data).decode()}})
         content.append({"type": "text", "text": user})
+        return {"model": self.st.anthropic_model, "max_tokens": 3000, "system": system,
+                "messages": [{"role": "user", "content": content}]}
+
+    # ------------------------------------------------------------------ differita (Message Batches)
+    def submit_batch(self) -> str | None:
+        """Invia la coda come un'unica richiesta in differita. Ritorna l'id del batch."""
+        if not self.queue:
+            return None
+        if not self.st.anthropic_api_key:
+            raise RuntimeError("ANTHROPIC_API_KEY mancante")
+        reqs = [{"custom_id": cid, "params": params} for cid, _, params in self.queue]
+        r = requests.post("https://api.anthropic.com/v1/messages/batches", headers=self._headers(),
+                          json={"requests": reqs}, timeout=300)
+        if r.status_code >= 400:
+            raise RuntimeError(f"Anthropic batch {r.status_code}: {r.text[:300]}")
+        batch_id = r.json()["id"]
+        self.store.llm_add_batch(batch_id, [(cid, key) for cid, key, _ in self.queue])
+        log.info("IA in differita: inviate %d analisi (batch %s)", len(self.queue), batch_id)
+        self.queue.clear()
+        return batch_id
+
+    def collect_batches(self) -> int:
+        """Scarica i risultati dei batch conclusi nella cache. Ritorna quanti risultati nuovi."""
+        got = 0
+        for b in self.store.llm_open_batches():
+            r = requests.get(f"https://api.anthropic.com/v1/messages/batches/{b['id']}", headers=self._headers(), timeout=60)
+            if r.status_code == 404:
+                self.store.llm_close_batch(b["id"], "perso", 0, 0)
+                continue
+            r.raise_for_status()
+            info = r.json()
+            if info.get("processing_status") != "ended":
+                continue
+            res = requests.get(info["results_url"], headers=self._headers(), timeout=300)
+            res.raise_for_status()
+            tin = tout = 0
+            for line in res.text.splitlines():
+                if not line.strip():
+                    continue
+                item = json.loads(line)
+                result = item.get("result") or {}
+                key = self.store.llm_pending_key(item.get("custom_id", ""))
+                if not key or result.get("type") != "succeeded":
+                    continue
+                msg = result.get("message") or {}
+                usage = msg.get("usage") or {}
+                tin += int(usage.get("input_tokens") or 0)
+                tout += int(usage.get("output_tokens") or 0)
+                text = "".join(c.get("text", "") for c in msg.get("content", []) if c.get("type") == "text")
+                if text:
+                    self.store.llm_cache_put(key, text)
+                    got += 1
+            self.store.llm_close_batch(b["id"], "concluso", tin, tout)
+            cost = (tin * self.st.price_in + tout * self.st.price_out) / 1e6 / 2
+            log.info("IA in differita: batch %s concluso, %d risultati, circa %.3f $", b["id"], got, cost)
+        return got
+
+    def _anthropic(self, system: str, user: str, img: Picture | None) -> str:
+        if not self.st.anthropic_api_key:
+            raise RuntimeError("ANTHROPIC_API_KEY mancante")
         r = requests.post(
             "https://api.anthropic.com/v1/messages",
-            headers={"x-api-key": self.st.anthropic_api_key, "anthropic-version": "2023-06-01",
-                     "content-type": "application/json"},
-            json={"model": self.st.anthropic_model, "max_tokens": 3000, "system": system,
-                  "messages": [{"role": "user", "content": content}]},
+            headers=self._headers(),
+            json=self._anthropic_params(system, user, img),
             timeout=180,
         )
         if r.status_code >= 400:

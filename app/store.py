@@ -44,6 +44,25 @@ CREATE TABLE IF NOT EXISTS runs (
     per_source TEXT DEFAULT '{}',
     report TEXT
 );
+CREATE TABLE IF NOT EXISTS llm_cache (
+    key TEXT PRIMARY KEY,
+    result TEXT,
+    created TEXT
+);
+CREATE TABLE IF NOT EXISTS llm_pending (
+    custom_id TEXT PRIMARY KEY,
+    key TEXT,
+    batch_id TEXT,
+    created TEXT
+);
+CREATE TABLE IF NOT EXISTS llm_batches (
+    id TEXT PRIMARY KEY,
+    created TEXT,
+    status TEXT,
+    count INTEGER,
+    tokens_in INTEGER DEFAULT 0,
+    tokens_out INTEGER DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS cache (
     kind TEXT NOT NULL,
     key TEXT NOT NULL,
@@ -176,4 +195,39 @@ class Store:
         """Fa rielaborare l'elemento al prossimo giro (non cancella gli eventi già creati)."""
         self.db.execute("UPDATE items SET content_hash=NULL, attempts=0, status=CASE WHEN status IN ('created','updated') "
                         "THEN status ELSE 'retry' END WHERE source_id=? AND uid=?", (source_id, uid))
+        self.db.commit()
+
+    # --- IA in differita (Message Batches)
+    def llm_cached(self, key: str) -> str | None:
+        r = self.db.execute("SELECT result FROM llm_cache WHERE key=?", (key,)).fetchone()
+        return r["result"] if r else None
+
+    def llm_cache_put(self, key: str, result: str) -> None:
+        self.db.execute("INSERT OR REPLACE INTO llm_cache VALUES (?,?,?)",
+                        (key, result, datetime.now().isoformat(timespec="seconds")))
+        self.db.commit()
+
+    def llm_is_pending(self, key: str) -> bool:
+        return self.db.execute("SELECT 1 FROM llm_pending WHERE key=?", (key,)).fetchone() is not None
+
+    def llm_add_batch(self, batch_id: str, items: list[tuple[str, str]]) -> None:
+        now = datetime.now().isoformat(timespec="seconds")
+        self.db.execute("INSERT OR REPLACE INTO llm_batches (id, created, status, count) VALUES (?,?,?,?)",
+                        (batch_id, now, "in_progress", len(items)))
+        self.db.executemany("INSERT OR REPLACE INTO llm_pending VALUES (?,?,?,?)",
+                            [(cid, key, batch_id, now) for cid, key in items])
+        self.db.commit()
+
+    def llm_open_batches(self) -> list[sqlite3.Row]:
+        return self.db.execute("SELECT * FROM llm_batches WHERE status='in_progress'").fetchall()
+
+    def llm_pending_key(self, custom_id: str) -> str | None:
+        r = self.db.execute("SELECT key FROM llm_pending WHERE custom_id=?", (custom_id,)).fetchone()
+        return r["key"] if r else None
+
+    def llm_close_batch(self, batch_id: str, status: str, tokens_in: int, tokens_out: int) -> None:
+        self.db.execute("UPDATE llm_batches SET status=?, tokens_in=?, tokens_out=? WHERE id=?",
+                        (status, tokens_in, tokens_out, batch_id))
+        self.db.execute("DELETE FROM llm_pending WHERE batch_id=?", (batch_id,))
+        self.db.execute("DELETE FROM llm_cache WHERE created < datetime('now','-30 days')")
         self.db.commit()
