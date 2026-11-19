@@ -136,7 +136,7 @@ function mep_cal_item( $ev, $show_date = false ) {
 	list( $s, $e, $span ) = mep_cal_ev_days( $ev );
 	$when = array();
 	if ( $show_date || $span > 0 ) {
-		$when[] = $span > 0 ? 'dal ' . date_i18n( 'j M', $s->getTimestamp() ) . ' al ' . date_i18n( 'j M', $e->getTimestamp() ) : date_i18n( 'j M', $s->getTimestamp() );
+		$when[] = $span > 0 ? 'dal ' . wp_date( 'j M', $s->getTimestamp() ) . ' al ' . wp_date( 'j M', $e->getTimestamp() ) : wp_date( 'j M', $s->getTimestamp() );
 	}
 	if ( $time ) {
 		$when[] = $time;
@@ -171,7 +171,7 @@ function mep_cal_agenda( $events, DateTime $from, DateTime $to ) {
 	$out = '';
 	foreach ( $byday as $day => $list ) {
 		$ts   = strtotime( $day );
-		$out .= '<h3 class="mep-cal__day">' . esc_html( ucfirst( date_i18n( 'l j F', $ts ) ) ) . '</h3><ul class="mep-cal__list">';
+		$out .= '<h3 class="mep-cal__day">' . esc_html( ucfirst( wp_date( 'l j F', $ts ) ) ) . '</h3><ul class="mep-cal__list">';
 		foreach ( $list as $ev ) {
 			$out .= mep_cal_item( $ev );
 		}
@@ -259,14 +259,14 @@ function mep_cal_shortcode() {
 			$to    = clone $ref;
 			$prev  = ( clone $ref )->modify( '-1 day' );
 			$next  = ( clone $ref )->modify( '+1 day' );
-			$label = ucfirst( date_i18n( 'l j F Y', $ref->getTimestamp() ) );
+			$label = ucfirst( wp_date( 'l j F Y', $ref->getTimestamp() ) );
 			break;
 		case 'settimana':
 			$from  = ( clone $ref )->modify( 'monday this week' );
 			$to    = ( clone $from )->modify( '+6 days' );
 			$prev  = ( clone $from )->modify( '-7 days' );
 			$next  = ( clone $from )->modify( '+7 days' );
-			$label = 'Settimana dal ' . date_i18n( 'j F', $from->getTimestamp() ) . ' al ' . date_i18n( 'j F Y', $to->getTimestamp() );
+			$label = 'Settimana dal ' . wp_date( 'j F', $from->getTimestamp() ) . ' al ' . wp_date( 'j F Y', $to->getTimestamp() );
 			break;
 		case 'prossimi':
 			$from  = new DateTime( current_time( 'Y-m-d' ), $tz );
@@ -280,7 +280,7 @@ function mep_cal_shortcode() {
 			$to    = ( clone $from )->modify( 'last day of this month' );
 			$prev  = ( clone $from )->modify( '-1 month' );
 			$next  = ( clone $from )->modify( '+1 month' );
-			$label = ucfirst( date_i18n( 'F Y', $from->getTimestamp() ) );
+			$label = ucfirst( wp_date( 'F Y', $from->getTimestamp() ) );
 	}
 
 	$events = mep_cal_events( $from, $to, mep_cal_venue_ids( $prov, $city ), $q, 'prossimi' === $vista ? 80 : 300 );
