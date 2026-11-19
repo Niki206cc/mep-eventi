@@ -104,10 +104,19 @@ def plan_slots(data: dict, today: date, st: Settings) -> tuple[str, list[Slot]]:
             return "too_long", []
         return "ok", [Slot(start, end, occ[0][1], occ[0][2])]
 
-    future = [o for o in occ if today <= o[0] <= horizon]
+    # giorni consecutivi (es. gara dal 12 al 16) -> un solo evento su più giorni
+    groups: list[list[tuple]] = []
+    for o in occ:
+        if groups and (o[0] - groups[-1][-1][0]).days <= 1:
+            if o[0] != groups[-1][-1][0]:
+                groups[-1].append(o)
+        else:
+            groups.append([o])
+    slots = [Slot(g[0][0], g[-1][0], g[0][1], g[-1][2] if len(g) > 1 else g[0][2]) for g in groups]
+    future = [sl for sl in slots if sl.end_day >= today and sl.start_day <= horizon]
     if not future:
-        return ("past" if occ[-1][0] < today else "out_of_horizon"), []
-    return "ok", [Slot(d, d, s, e) for d, s, e in future[: st.max_occurrences]]
+        return ("past" if slots[-1].end_day < today else "out_of_horizon"), []
+    return "ok", future[: st.max_occurrences]
 
 
 # ---------------------------------------------------------------------- report

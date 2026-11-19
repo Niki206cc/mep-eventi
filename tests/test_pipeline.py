@@ -69,7 +69,12 @@ def test_plan_singolo_and_past(st):
 def test_plan_piu_date_filters_past_and_caps(st):
     occ = [{"date": f"2026-11-{d:02d}", "start_time": "21:00", "end_time": "23:00"} for d in range(10, 30)]
     ok, slots = plan_slots({"kind": "piu_date", "occurrences": occ}, TODAY, st)
-    assert ok == "ok" and len(slots) == st.max_occurrences and slots[0].start_day == date(2026, 11, 18)
+    # serate consecutive -> un solo evento ancora in corso
+    assert ok == "ok" and len(slots) == 1 and slots[0].start_day == date(2026, 11, 10)
+    assert slots[0].wp_dates() == ("2026-11-10 21:00:00", "2026-11-29 23:00:00")
+    occ = [{"date": f"2026-12-{d:02d}"} for d in range(1, 31, 2)]  # date non consecutive: eventi separati
+    ok, slots = plan_slots({"kind": "piu_date", "occurrences": occ}, TODAY, st)
+    assert ok == "ok" and len(slots) == st.max_occurrences and slots[0].start_day == date(2026, 12, 1)
 
 
 def test_plan_periodo_and_recurring(st):
@@ -368,3 +373,21 @@ def test_shrink_for_llm_reduces_size():
     small = shrink_for_llm(pic, 1000)
     assert max(small.width, small.height) == 1000 and small.source_url == pic.source_url
     assert shrink_for_llm(small, 1000) is small
+
+
+def test_consecutive_days_become_one_event():
+    from datetime import date
+    from app.config import Settings
+    from app.pipeline import plan_slots
+    st = Settings()
+    data = {"kind": "piu_date", "occurrences": [
+        {"date": "2026-12-12", "start_time": "09:00"}, {"date": "2026-12-13"}, {"date": "2026-12-14"},
+        {"date": "2026-12-15"}, {"date": "2026-12-16", "end_time": "18:00"},
+        {"date": "2026-12-20", "start_time": "21:00"}]}
+    status, slots = plan_slots(data, date(2026, 12, 1), st)
+    assert status == "ok" and len(slots) == 2
+    assert slots[0].wp_dates() == ("2026-12-12 09:00:00", "2026-12-16 18:00:00")
+    assert (slots[1].start_day, slots[1].end_day) == (date(2026, 12, 20), date(2026, 12, 20))
+    # evento già iniziato ma ancora in corso resta
+    status, slots = plan_slots(data, date(2026, 12, 14), st)
+    assert slots[0].start_day == date(2026, 12, 12)
