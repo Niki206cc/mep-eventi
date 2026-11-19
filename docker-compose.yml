@@ -30,6 +30,13 @@ services:
       HORIZON_DAYS: ${HORIZON_DAYS:-120}
       SKIP_RECURRING: ${SKIP_RECURRING:-true}
       MAX_NEW_PER_RUN: ${MAX_NEW_PER_RUN:-15}
+      LLM_MAX_CALLS_PER_RUN: ${LLM_MAX_CALLS_PER_RUN:-40}
+      LLM_IMAGE_SIDE: ${LLM_IMAGE_SIDE:-1000}
+      LLM_TEXT_CHARS: ${LLM_TEXT_CHARS:-6000}
+      UPDATE_CHANGED: ${UPDATE_CHANGED:-false}
+      RECHECK_DAYS: ${RECHECK_DAYS:-14}
+      LLM_PRICE_IN: ${LLM_PRICE_IN:-2}
+      LLM_PRICE_OUT: ${LLM_PRICE_OUT:-10}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       # --- Interfaccia web (lascia WEB_PASSWORD vuota per nessuna password)
       WEB_USER: ${WEB_USER:-admin}
