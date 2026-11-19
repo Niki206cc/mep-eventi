@@ -199,7 +199,8 @@ function mep_cal_agenda( $events, DateTime $from, DateTime $to ) {
 	return $out ? $out : '<p class="mep-cal__empty">Nessun evento trovato con questi filtri.</p>';
 }
 
-function mep_cal_month_grid( $events, DateTime $first ) {
+function mep_cal_month_grid( $events, DateTime $first, DateTime $min = null ) {
+	$min    = $min ? $min : $first;
 	$last   = ( clone $first )->modify( 'last day of this month' );
 	$cells  = array();
 	foreach ( $events as $ev ) {
@@ -207,7 +208,7 @@ function mep_cal_month_grid( $events, DateTime $first ) {
 		if ( $span > 7 ) {
 			continue;
 		}
-		$d = max( $s, $first );
+		$d = max( $s, $min );
 		$d = clone $d;
 		while ( $d <= $e && $d <= $last ) {
 			$cells[ $d->format( 'Y-m-d' ) ][] = $ev;
@@ -228,7 +229,7 @@ function mep_cal_month_grid( $events, DateTime $first ) {
 	while ( $d <= $last ) {
 		$k    = $d->format( 'Y-m-d' );
 		$list = $cells[ $k ] ?? array();
-		$cls  = 'mep-cal__cell' . ( $k === $today ? ' mep-cal__cell--today' : '' ) . ( $list ? ' mep-cal__cell--has' : '' );
+		$cls  = 'mep-cal__cell' . ( $k === $today ? ' mep-cal__cell--today' : '' ) . ( $k < $today ? ' mep-cal__cell--past' : '' ) . ( $list ? ' mep-cal__cell--has' : '' );
 		$out .= '<div class="' . $cls . '"><a class="mep-cal__num" href="' . mep_cal_url( array( 'cal_vista' => 'giorno', 'cal_data' => $k ) ) . '">' . $d->format( 'j' ) . '</a>';
 		foreach ( array_slice( $list, 0, 3 ) as $ev ) {
 			$out .= '<a class="mep-cal__chip" href="' . esc_url( get_permalink( $ev ) ) . '" title="' . esc_attr( get_the_title( $ev ) ) . '">' . esc_html( wp_trim_words( get_the_title( $ev ), 6, '…' ) ) . '</a>';
@@ -241,6 +242,12 @@ function mep_cal_month_grid( $events, DateTime $first ) {
 	}
 	$out .= '</div></div>';
 	return $out;
+}
+
+/** Pagina nel passato: mostra lo stesso tipo di vista a partire da oggi. */
+function mep_cal_redirect_today( $vista ) {
+	unset( $_GET['cal_data'] ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	return mep_cal_shortcode();
 }
 
 function mep_cal_shortcode() {
@@ -295,7 +302,16 @@ function mep_cal_shortcode() {
 			$label = ucfirst( wp_date( 'F Y', $from->getTimestamp() ) );
 	}
 
-	$events = mep_cal_events( $from, $to, mep_cal_venue_ids( $prov, $city ), $q, 'prossimi' === $vista ? 80 : 300 );
+	// solo eventi da oggi in avanti: niente navigazione nel passato
+	$today_dt = new DateTime( current_time( 'Y-m-d' ), $tz );
+	if ( $to < $today_dt ) {
+		return mep_cal_redirect_today( $vista );
+	}
+	$q_from = $from < $today_dt ? clone $today_dt : $from;
+	if ( $prev && $prev < $today_dt && ( 'mese' !== $vista || $prev->format( 'Y-m' ) < $today_dt->format( 'Y-m' ) ) && ( 'settimana' !== $vista || ( clone $prev )->modify( '+6 days' ) < $today_dt ) ) {
+		$prev = null;
+	}
+	$events = mep_cal_events( $q_from, $to, mep_cal_venue_ids( $prov, $city ), $q, 'prossimi' === $vista ? 80 : 300 );
 
 	ob_start();
 	echo mep_eventi_css(); // phpcs:ignore WordPress.Security.EscapeOutput
@@ -348,10 +364,10 @@ function mep_cal_shortcode() {
 	echo '</p>';
 
 	if ( 'mese' === $vista ) {
-		echo mep_cal_month_grid( $events, $from ); // phpcs:ignore WordPress.Security.EscapeOutput
-		echo '<div class="mep-cal__agenda mep-cal__agenda--month">' . mep_cal_agenda( $events, $from, $to ) . '</div>'; // phpcs:ignore WordPress.Security.EscapeOutput
+		echo mep_cal_month_grid( $events, $from, $q_from ); // phpcs:ignore WordPress.Security.EscapeOutput
+		echo '<div class="mep-cal__agenda mep-cal__agenda--month">' . mep_cal_agenda( $events, $q_from, $to ) . '</div>'; // phpcs:ignore WordPress.Security.EscapeOutput
 	} else {
-		echo '<div class="mep-cal__agenda">' . mep_cal_agenda( $events, $from, $to ) . '</div>'; // phpcs:ignore WordPress.Security.EscapeOutput
+		echo '<div class="mep-cal__agenda">' . mep_cal_agenda( $events, $q_from, $to ) . '</div>'; // phpcs:ignore WordPress.Security.EscapeOutput
 	}
 
 	$submit = mep_eventi_opt( 'submit_page_url' );
@@ -386,6 +402,7 @@ function mep_cal_css() {
 .mep-cal__cell:nth-child(7n+1){border-left:0}
 .mep-cal__cell--out{background:#fafafa}
 .mep-cal__cell--today{background:#eef6f1}
+.mep-cal__cell--past{background:#fafafa;opacity:.55}
 .mep-cal__num{font-weight:700;font-size:.85em;text-decoration:none;color:inherit}
 .mep-cal__chip{display:block;font-size:.75em;line-height:1.25;padding:2px 4px;border-radius:4px;background:#e6f0ea;color:#1e4a33;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mep-cal__more{font-size:.72em;color:var(--a)}
