@@ -159,7 +159,8 @@ def parse_page(html: str, base_url: str) -> dict:
     return {"title": title, "text": text[:MAX_TEXT], "images": images[:12], "pdfs": pdfs[:5], "jsonld": jsonld}
 
 
-def find_links(html: str, base_url: str, pattern: str, exclude: str | None = None) -> list[str]:
+def find_links(html: str, base_url: str, pattern: str, exclude: str | None = None,
+               external: bool = False) -> list[str]:
     soup = soup_of(html)
     rx = re.compile(pattern)
     ex = re.compile(exclude) if exclude else None
@@ -167,7 +168,7 @@ def find_links(html: str, base_url: str, pattern: str, exclude: str | None = Non
     base_host = urlparse(base_url).netloc
     for a in soup.find_all("a", href=True):
         href = urljoin(base_url, a["href"]).split("#")[0]
-        if urlparse(href).netloc != base_host:
+        if not external and urlparse(href).netloc != base_host:
             continue
         if rx.search(href) and not (ex and ex.search(href)) and href not in out:
             out.append(href)

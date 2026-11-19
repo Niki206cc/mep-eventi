@@ -24,7 +24,8 @@ class HtmlSource(Source):
             except Exception as e:  # noqa: BLE001
                 self.log.warning("elenco %s non raggiungibile: %s", url, e)
                 continue
-            for link in find_links(html, url, self.cfg["link_pattern"], self.cfg.get("exclude_pattern")):
+            for link in find_links(html, url, self.cfg["link_pattern"], self.cfg.get("exclude_pattern"),
+                                   external=bool(self.cfg.get("external_links"))):
                 if link not in links:
                     links.append(link)
 

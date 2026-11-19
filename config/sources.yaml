@@ -198,6 +198,7 @@ sources:
     listing_urls:
       - https://www.lecinqueterredellavalgandino.it/eventi/
     link_pattern: 'bergamoavvenimenti\.it/calendario/event/\d+/[^/?#]+/?$'
+    external_links: true
     max_links: 60
     zona: "Val Gandino"
 
