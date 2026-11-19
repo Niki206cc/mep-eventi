@@ -84,8 +84,7 @@ function mep_cal_events( DateTime $from, DateTime $to, $venue_ids, $q, $limit = 
 	if ( function_exists( 'tribe_events' ) ) {
 		$repo = tribe_events()
 			->where( 'status', 'publish' )
-			->where( 'ends_on_or_after', $from->format( 'Y-m-d 00:00:00' ) )
-			->where( 'starts_on_or_before', $to->format( 'Y-m-d 23:59:59' ) )
+			->where( 'date_overlaps', $from->format( 'Y-m-d 00:00:00' ), $to->format( 'Y-m-d 23:59:59' ) )
 			->order_by( 'event_date', 'ASC' )
 			->per_page( $limit );
 		if ( is_array( $venue_ids ) ) {
@@ -94,7 +93,7 @@ function mep_cal_events( DateTime $from, DateTime $to, $venue_ids, $q, $limit = 
 		if ( '' !== $q ) {
 			$repo->search( $q );
 		}
-		return $repo->all();
+		return mep_cal_in_range( $repo->all(), $from, $to );
 	}
 	$args = array(
 		'posts_per_page' => $limit,
@@ -109,7 +108,20 @@ function mep_cal_events( DateTime $from, DateTime $to, $venue_ids, $q, $limit = 
 	if ( is_array( $venue_ids ) ) {
 		$args['venue'] = $venue_ids;
 	}
-	return tribe_get_events( $args );
+	return mep_cal_in_range( tribe_get_events( $args ), $from, $to );
+}
+
+/** Sicurezza: tiene solo gli eventi che toccano davvero l'intervallo. */
+function mep_cal_in_range( $events, DateTime $from, DateTime $to ) {
+	$f   = $from->format( 'Y-m-d' );
+	$t   = $to->format( 'Y-m-d' );
+	$out = array();
+	foreach ( (array) $events as $ev ) {
+		if ( tribe_get_end_date( $ev, false, 'Y-m-d' ) >= $f && tribe_get_start_date( $ev, false, 'Y-m-d' ) <= $t ) {
+			$out[] = $ev;
+		}
+	}
+	return $out;
 }
 
 function mep_cal_url( $over = array() ) {
