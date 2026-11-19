@@ -111,6 +111,10 @@ def plan_slots(data: dict, today: date, st: Settings) -> tuple[str, list[Slot]]:
 
 
 # ---------------------------------------------------------------------- report
+class LLMBudgetReached(Exception):
+    """Raggiunto il numero massimo di analisi IA per questo giro."""
+
+
 @dataclass
 class Report:
     created: list[str] = field(default_factory=list)
@@ -199,12 +203,14 @@ class Pipeline:
                             if self.st.event_pause and not self.dry:
                                 LIVE.update(current=f"pausa {self.st.event_pause}s (protezione sito)")
                                 time.sleep(self.st.event_pause)
-                    except SiteDownError:
+                    except (SiteDownError, LLMBudgetReached):
                         raise
                     except Exception as e:  # noqa: BLE001
                         log.exception("errore su %s", raw.url)
                         stats["errori"] += 1
                         self._fail(raw, e)
+        except LLMBudgetReached:
+            self.report.notes.append(f"Raggiunto il limite di {self.st.llm_max_calls} analisi IA per giro: il resto al prossimo.")
         except SiteDownError as e:
             status = "interrotto"
             log.error("%s", e)
@@ -224,6 +230,10 @@ class Pipeline:
             LIVE.update(running=False, current="", source="")
             log.info("Fine: %d nuovi, %d aggiornati, scartati %s, errori %d",
                      len(self.report.created), len(self.report.updated), dict(self.report.skipped), len(self.report.errors))
+            cost = self.llm.tokens_in / 1e6 * self.st.price_in + self.llm.tokens_out / 1e6 * self.st.price_out
+            log.info("IA: %d analisi, %d token in, %d token out, circa %.3f $", self.llm.calls,
+                     self.llm.tokens_in, self.llm.tokens_out, cost)
+            self.report.notes.append(f"IA: {self.llm.calls} analisi, circa {cost:.2f} $")
         return self.report
 
     # ------------------------------------------------------------------
@@ -257,9 +267,34 @@ class Pipeline:
             if row["status"] in FINAL or (row["status"] == "error" and row["attempts"] >= MAX_ATTEMPTS):
                 return False
 
+        # Risparmio crediti: schede già valutate che cambiano solo per dettagli (menu, "eventi correlati",
+        # contatori...) non vengono rianalizzate dall'IA.
+        if row and row["content_hash"] != h and row["status"] in FINAL:
+            st_old = row["status"]
+            if st_old in ("created", "updated"):
+                if not self.st.update_changed:
+                    # non sovrascrive le modifiche fatte a mano sul sito
+                    if not self.dry:
+                        self.store.save(raw.source_id, raw.uid, content_hash=h, note="modificato alla fonte (non riletto)")
+                    return False
+            elif st_old == "out_of_horizon":
+                seen = _valid_date(row["last_seen"])
+                if seen and (today - seen).days < self.st.recheck_days:
+                    return False
+            elif (raw.title or "").strip() == (row["title"] or "").strip():
+                if not self.dry:
+                    self.store.save(raw.source_id, raw.uid, content_hash=h)
+                return False
+
         end_hint = _valid_date(raw.hints.get("end_date"))
         if end_hint and end_hint < today:
             return self._skip(raw, "past")
+        start_hint = _valid_date(raw.hints.get("start_date"))
+        if start_hint and start_hint > today + timedelta(days=self.st.horizon_days):
+            return self._skip(raw, "out_of_horizon")
+
+        if self.llm.calls >= self.st.llm_max_calls:
+            raise LLMBudgetReached()
 
         # locandina: immagini candidate + eventuale PDF
         pictures = [p for p in (load_image(self.http, u) for u in raw.image_urls[:6]) if p]

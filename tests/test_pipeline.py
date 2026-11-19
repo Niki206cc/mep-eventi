@@ -164,6 +164,8 @@ class FakeLLM:
     def __init__(self, data):
         self.data = data
         self.calls = 0
+        self.tokens_in = 0
+        self.tokens_out = 0
 
     def analyze(self, raw, today, picture, pdf_text=""):
         self.calls += 1
@@ -355,3 +357,14 @@ def test_pdf_only_from_content_and_skip_listino():
     <a href="/up/informativa-privacy.pdf">privacy</a></article><footer><a href="/up/altro.pdf">x</a></footer></body></html>"""
     p = parse_page(html, "https://visitlakeiseo.info/eventi/festa/")
     assert p["pdfs"] == ["https://visitlakeiseo.info/up/programma-festa.pdf"]
+
+
+def test_shrink_for_llm_reduces_size():
+    import io
+    from PIL import Image
+    from app.images import Picture, shrink_for_llm
+    buf = io.BytesIO(); Image.new("RGB", (1200, 1600), "white").save(buf, "JPEG")
+    pic = Picture(buf.getvalue(), "image/jpeg", 1200, 1600, "http://x/a.jpg")
+    small = shrink_for_llm(pic, 1000)
+    assert max(small.width, small.height) == 1000 and small.source_url == pic.source_url
+    assert shrink_for_llm(small, 1000) is small

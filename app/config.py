@@ -77,6 +77,14 @@ class Settings:
     skip_recurring: bool = field(default_factory=lambda: _bool("SKIP_RECURRING", True))
     max_period_days: int = field(default_factory=lambda: _int("MAX_PERIOD_DAYS", 120))
     max_new_per_run: int = field(default_factory=lambda: _int("MAX_NEW_PER_RUN", 15))
+    # risparmio crediti IA
+    llm_max_calls: int = field(default_factory=lambda: _int("LLM_MAX_CALLS_PER_RUN", 40))
+    llm_image_side: int = field(default_factory=lambda: _int("LLM_IMAGE_SIDE", 1000))
+    llm_text_chars: int = field(default_factory=lambda: _int("LLM_TEXT_CHARS", 6000))
+    update_changed: bool = field(default_factory=lambda: _bool("UPDATE_CHANGED", False))
+    price_in: float = field(default_factory=lambda: float(os.getenv("LLM_PRICE_IN", "2")))     # $/milione token
+    price_out: float = field(default_factory=lambda: float(os.getenv("LLM_PRICE_OUT", "10")))
+    recheck_days: int = field(default_factory=lambda: _int("RECHECK_DAYS", 14))
     min_image_side: int = field(default_factory=lambda: _int("MIN_IMAGE_SIDE", 300))
     check_existing_on_site: bool = field(default_factory=lambda: _bool("CHECK_EXISTING_ON_SITE", False))
 

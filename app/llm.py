@@ -10,7 +10,7 @@ from datetime import date
 import requests
 
 from .config import Settings
-from .images import Picture
+from .images import Picture, shrink_for_llm
 from .models import RawEvent
 
 log = logging.getLogger(__name__)
@@ -57,7 +57,7 @@ Rispondi SOLO con un oggetto JSON valido, senza testo prima o dopo, con questo s
 }}"""
 
 
-def build_user_prompt(raw: RawEvent, extra_pdf_text: str = "") -> str:
+def build_user_prompt(raw: RawEvent, extra_pdf_text: str = "", max_chars: int = 6000) -> str:
     parts = [
         f"FONTE: {raw.source_name}",
         f"URL: {raw.url}",
@@ -65,9 +65,9 @@ def build_user_prompt(raw: RawEvent, extra_pdf_text: str = "") -> str:
     ]
     if raw.hints:
         parts.append("DATI STRUTTURATI DALLA FONTE (affidabili): " + json.dumps(raw.hints, ensure_ascii=False, default=str))
-    parts.append("TESTO DELLA SCHEDA:\n" + (raw.text or "(vuoto)")[:12000])
+    parts.append("TESTO DELLA SCHEDA:\n" + (raw.text or "(vuoto)")[:max_chars])
     if extra_pdf_text:
-        parts.append("TESTO DEL PDF ALLEGATO (locandina/programma):\n" + extra_pdf_text[:4000])
+        parts.append("TESTO DEL PDF ALLEGATO (locandina/programma):\n" + extra_pdf_text[:2500])
     return "\n\n".join(parts)
 
 
@@ -86,11 +86,15 @@ def parse_json(text: str) -> dict:
 class LLM:
     def __init__(self, st: Settings):
         self.st = st
+        self.calls = 0
+        self.tokens_in = 0
+        self.tokens_out = 0
 
     def analyze(self, raw: RawEvent, today: date, picture: Picture | None, pdf_text: str = "") -> dict:
         system = SYSTEM_PROMPT.format(today=today.isoformat(), categories=", ".join(self.st.categories))
-        user = build_user_prompt(raw, pdf_text)
-        img = picture if (picture and self.st.llm_vision) else None
+        user = build_user_prompt(raw, pdf_text, self.st.llm_text_chars)
+        img = shrink_for_llm(picture, self.st.llm_image_side) if (picture and self.st.llm_vision) else None
+        self.calls += 1
         if self.st.llm_provider == "openai":
             out = self._openai(system, user, img)
         else:
@@ -119,6 +123,9 @@ class LLM:
         if r.status_code >= 400:
             raise RuntimeError(f"Anthropic {r.status_code}: {r.text[:300]}")
         data = r.json()
+        usage = data.get("usage") or {}
+        self.tokens_in += int(usage.get("input_tokens") or 0)
+        self.tokens_out += int(usage.get("output_tokens") or 0)
         return "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
 
     def _openai(self, system: str, user: str, img: Picture | None) -> str:

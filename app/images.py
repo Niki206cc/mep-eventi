@@ -117,3 +117,18 @@ def slugify(text: str) -> str:
 
 def host_of(url: str) -> str:
     return urlparse(url).netloc.replace("www.", "")
+
+
+def shrink_for_llm(pic: Picture, side: int) -> Picture:
+    """Copia ridotta della locandina da mandare all'IA: meno pixel = meno token.
+    La locandina caricata sul sito resta a piena risoluzione."""
+    if not side or max(pic.width, pic.height) <= side:
+        return pic
+    try:
+        img = Image.open(io.BytesIO(pic.data)).convert("RGB")
+        img.thumbnail((side, side))
+        buf = io.BytesIO()
+        img.save(buf, "JPEG", quality=80, optimize=True)
+        return Picture(buf.getvalue(), "image/jpeg", img.width, img.height, pic.source_url, pic.from_pdf)
+    except Exception:  # noqa: BLE001
+        return pic
