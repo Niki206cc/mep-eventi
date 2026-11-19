@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name:       MEP Eventi – Prossimi eventi e segnalazioni
- * Description:       Box "Prossimi eventi" leggero per la home ([mep_prossimi_eventi]) e modulo pubblico per segnalare eventi ([mep_segnala_evento]) che crea bozze in The Events Calendar.
- * Version:           1.0.3
+ * Description:       Calendario eventi con filtri ([mep_calendario]), box "Prossimi eventi" leggero per la home ([mep_prossimi_eventi]) e modulo pubblico per segnalare eventi ([mep_segnala_evento]) che crea bozze in The Events Calendar.
+ * Version:           1.1.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Montagne & Paesi
@@ -13,7 +13,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'MEP_EVENTI_VERSION', '1.0.3' );
+define( 'MEP_EVENTI_VERSION', '1.1.0' );
+require_once __DIR__ . '/includes/calendario.php';
 define( 'MEP_EVENTI_OPT', 'mep_eventi_settings' );
 
 /* -------------------------------------------------------------------------
