@@ -51,7 +51,7 @@ class App:
         }
 
 
-def _send_item_mail(self, source_id: str, uid: str, to: str | None = None) -> dict:
+def _send_item_mail(self, source_id: str, uid: str, to: str | None = None, force: bool = False) -> dict:
     """Invio manuale della mail all'organizzatore di un evento già pubblicato."""
     from datetime import datetime
 
@@ -63,6 +63,9 @@ def _send_item_mail(self, source_id: str, uid: str, to: str | None = None) -> di
     email = clean_email(to or row["org_email"])
     if not email:
         return {"ok": False, "error": "nessuna email valida"}
+    last = s.email_last_sent(email)
+    if last and not force:
+        return {"ok": False, "already": last, "error": f"a {email} è già stata inviata una mail il {last[:16].replace('T', ' ')}"}
     url = row["event_url"]
     ids = s.wp_ids(row)
     if not url and ids:
@@ -150,9 +153,13 @@ def make_handler(app: App):
                 if u.path == "/api/runs":
                     return self._json(app.store().runs(int(q.get("limit", 30))))
                 if u.path == "/api/items":
-                    return self._json(app.store().items(q.get("status") or None, q.get("source") or None,
-                                                        q.get("q") or None, int(q.get("limit", 300)),
-                                                        q.get("mail") or None))
+                    st_ = app.store()
+                    rows = st_.items(q.get("status") or None, q.get("source") or None,
+                                     q.get("q") or None, int(q.get("limit", 300)), q.get("mail") or None)
+                    for r in rows:
+                        if r.get("org_email") and not (r.get("mail_sent") and not str(r["mail_sent"]).startswith("errore")):
+                            r["email_contacted"] = st_.email_last_sent(r["org_email"])
+                    return self._json(rows)
                 if u.path == "/api/settings":
                     c = mail_conf(app.store())
                     c["smtp_password"] = "********" if c.get("smtp_password") else ""
@@ -202,7 +209,7 @@ def make_handler(app: App):
                     send_mail(c, build_mail(c, to, "Evento di prova", c.get("social_site") or self.st_url()))
                     return self._json({"ok": True})
                 if u.path == "/api/items/mail":
-                    return self._json(app.send_item_mail(data["source_id"], data["uid"], data.get("to")))
+                    return self._json(app.send_item_mail(data["source_id"], data["uid"], data.get("to"), bool(data.get("force"))))
                 if u.path == "/api/items/retry":
                     app.store().reset_item(data["source_id"], data["uid"])
                     return self._json({"ok": True})

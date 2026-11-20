@@ -173,7 +173,9 @@ class Store:
               limit: int = 300, mail: str | None = None) -> list[dict]:
         sql, args = "SELECT * FROM items WHERE 1=1", []
         if mail == "todo":
-            sql += " AND org_email IS NOT NULL AND (mail_sent IS NULL OR mail_sent LIKE 'errore%') AND status IN ('created','updated')"
+            sql += (" AND org_email IS NOT NULL AND (mail_sent IS NULL OR mail_sent LIKE 'errore%') AND status IN ('created','updated')"
+                    " AND lower(org_email) NOT IN (SELECT lower(org_email) FROM items WHERE org_email IS NOT NULL"
+                    " AND mail_sent IS NOT NULL AND mail_sent NOT LIKE 'errore%')")
         elif mail == "sent":
             sql += " AND mail_sent IS NOT NULL AND mail_sent NOT LIKE 'errore%'"
         elif mail == "any":
@@ -280,3 +282,10 @@ class Store:
         if sum(out.values()) > 200:
             self.db.execute("VACUUM")
         return out
+
+    def email_last_sent(self, email: str) -> str | None:
+        """Ultimo invio riuscito a questo indirizzo (per non mandare più mail alla stessa persona)."""
+        r = self.db.execute(
+            "SELECT MAX(mail_sent) AS m FROM items WHERE lower(org_email)=lower(?) "
+            "AND mail_sent IS NOT NULL AND mail_sent NOT LIKE 'errore%'", (email,)).fetchone()
+        return r["m"] if r and r["m"] else None

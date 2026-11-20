@@ -425,7 +425,10 @@ class Pipeline:
         email = clean_email(org.get("email")) if isinstance(org, dict) else None
         fields = {"created_at": datetime.now().isoformat(timespec="seconds"), "org_email": email, "event_url": url}
         self.store.llm_cache_drop(cache_key(raw))
-        if email and url and self.st.publish_status == "publish":
+        already = self.store.email_last_sent(email) if email else None
+        if already:
+            fields["mail_mode"] = "già contattato"   # una sola mail per indirizzo: niente spam
+        elif email and url and self.st.publish_status == "publish":
             try:
                 if notify_organizer(self.store, email, title, url):
                     fields["mail_sent"] = datetime.now().isoformat(timespec="seconds")

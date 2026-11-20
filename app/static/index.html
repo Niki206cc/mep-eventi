@@ -50,6 +50,7 @@ td a{color:var(--accent)}
 .b-error,.b-fallito{background:#fbe5e2;color:var(--err)}
 .b-duplicate,.b-retry,.b-con{background:#e6eefb;color:var(--info)}
 .b-other{background:var(--line);color:var(--muted)}
+.b-skip{background:#fff3d6;color:#8a5a00}.b-error{background:#fbe5e2;color:var(--err)}
 .b-running{background:#fff3d6;color:#8a5a00}
 .muted{color:var(--muted)}.small{font-size:12px}
 .note{max-width:380px;color:var(--muted);font-size:12px}
@@ -216,8 +217,10 @@ function mailCell(r){
   const err = r.mail_sent && String(r.mail_sent).startsWith("errore");
   const pub = r.status==="created"||r.status==="updated";
   let st = sent ? `<span class="b b-ok">✓ inviata ${r.mail_mode==="manuale"?"a mano":"in automatico"} ${fmtDT2(r.mail_sent)}</span>`
+         : r.email_contacted ? `<span class="b b-skip" title="Una sola mail per indirizzo: questa non parte in automatico">già contattato ${fmtDT2(r.email_contacted)}</span>`
          : err ? `<span class="b b-error" title="${esc(r.mail_sent)}">invio fallito</span>` : `<span class="b b-other">non inviata</span>`;
-  const btn = pub ? `<button class="small" data-mail="${id}" data-to="${esc(r.org_email)}" data-again="${sent?1:0}">${sent?"Reinvia":"Invia mail"}</button>` : "";
+  const again = sent || r.email_contacted;
+  const btn = pub ? `<button class="small" data-mail="${id}" data-to="${esc(r.org_email)}" data-again="${again?1:0}">${again?"Invia comunque":"Invia mail"}</button>` : "";
   return `<div class="mailrow">✉ <a href="mailto:${esc(r.org_email)}">${esc(r.org_email)}</a> ${st} ${btn}</div>`;
 }
 
@@ -282,9 +285,10 @@ document.addEventListener("click", async e => {
     await api("api/items/retry",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({source_id,uid})});
     toast("Verrà rielaborato al prossimo giro"); loadItems(); }
   if (t.dataset.mail){
-    if (t.dataset.again==="1" && !confirm("La mail a "+t.dataset.to+" è già stata inviata. Reinviarla?")) return;
+    const force = t.dataset.again==="1";
+    if (force && !confirm(t.dataset.to+" ha già ricevuto una mail da noi. Inviarne un'altra?")) return;
     const [source_id, uid] = t.dataset.mail.split("|"); t.disabled = true; t.textContent = "Invio…";
-    try { const r = await post("api/items/mail",{source_id,uid});
+    try { const r = await post("api/items/mail",{source_id,uid,force});
       toast(r.ok ? "Mail inviata a "+r.to : "Errore: "+r.error); } catch(err){ toast("Errore: "+err.message); }
     loadItems(); }
   if (t.dataset.rep !== undefined) $("#rep"+t.dataset.rep).classList.toggle("hidden");
